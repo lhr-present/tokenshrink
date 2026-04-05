@@ -128,9 +128,10 @@ export class Interceptor {
 
     if (result.success && result.compressed && result.compressed !== text) {
       this.adapter.setText(ta, result.compressed);
-      if (this.settings.showToast && result.stats) {
-        this._showToast(result.stats);
-      }
+      // Dispatch custom event so content.js can show the toast (avoids importing DOM modules here)
+      window.dispatchEvent(new CustomEvent('tokenshrink:compressed', {
+        detail: { source: result.source, stats: result.stats },
+      }));
       // Save stats
       chrome.runtime.sendMessage({ action: 'SAVE_STATS', stats: result.stats });
     }
@@ -145,27 +146,44 @@ export class Interceptor {
     }
   }
 
-  _showIndicator(nearEl) {
+  _showIndicator() {
     this._removeIndicator();
     const div = document.createElement('div');
     div.id = INDICATOR_ID;
-    div.textContent = '⚡ compressing...';
-    div.style.cssText = `
-      position: fixed;
-      bottom: 80px;
-      right: 24px;
-      background: #0a0a0a;
-      color: #00ff8c;
-      border: 1px solid #00ff8c;
-      font-family: 'JetBrains Mono', monospace, monospace;
-      font-size: 12px;
-      padding: 6px 12px;
-      border-radius: 4px;
-      z-index: 99999;
-      letter-spacing: 0.05em;
-      pointer-events: none;
-      opacity: 0.92;
+    div.innerHTML = `
+      <span style="
+        display:inline-flex;align-items:center;gap:7px;
+        background:#111;
+        border:1px solid rgba(0,255,140,0.25);
+        border-left:2px solid #00ff8c;
+        border-radius:4px;
+        padding:6px 12px;
+        font-family:'JetBrains Mono','Courier New',monospace;
+        font-size:11px;
+        color:#00ff8c;
+        box-shadow:0 3px 16px rgba(0,0,0,0.5);
+        letter-spacing:0.05em;
+        white-space:nowrap;
+      ">
+        <span id="ts-spin" style="
+          display:inline-block;
+          width:9px;height:9px;
+          border:1.5px solid #00ff8c;
+          border-top-color:transparent;
+          border-radius:50%;
+          animation:ts-spin 0.65s linear infinite;
+        "></span>
+        TokenShrink compressing\u2026
+      </span>
+      <style>@keyframes ts-spin{to{transform:rotate(360deg)}}</style>
     `;
+    Object.assign(div.style, {
+      position: 'fixed',
+      bottom: '80px',
+      right: '20px',
+      zIndex: '2147483646',
+      pointerEvents: 'none',
+    });
     document.body.appendChild(div);
   }
 
@@ -173,31 +191,4 @@ export class Interceptor {
     document.getElementById(INDICATOR_ID)?.remove();
   }
 
-  _showToast(stats) {
-    const div = document.createElement('div');
-    div.textContent = `TokenShrink: ${stats.saved} tokens saved (${stats.pct}%)`;
-    div.style.cssText = `
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: #0a0a0a;
-      color: #00ff8c;
-      border: 1px solid #1a2a1a;
-      font-family: 'JetBrains Mono', monospace, monospace;
-      font-size: 12px;
-      padding: 8px 16px;
-      border-radius: 4px;
-      z-index: 99999;
-      letter-spacing: 0.05em;
-      opacity: 0;
-      transition: opacity 0.2s ease;
-      pointer-events: none;
-    `;
-    document.body.appendChild(div);
-    requestAnimationFrame(() => { div.style.opacity = '0.95'; });
-    setTimeout(() => {
-      div.style.opacity = '0';
-      setTimeout(() => div.remove(), 300);
-    }, 3000);
-  }
 }

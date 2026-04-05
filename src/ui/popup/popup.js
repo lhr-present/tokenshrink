@@ -83,7 +83,7 @@ document.getElementById('optionsLink').addEventListener('click', (e) => {
   chrome.runtime.openOptionsPage();
 });
 
-// Live update when storage changes (e.g. a compression just happened)
+// Live update when storage changes (stats or lastCompression)
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.stats) {
     const newStats = changes.stats.newValue || {};
@@ -94,14 +94,55 @@ chrome.storage.onChanged.addListener((changes) => {
       sessionSaved += delta;
       sessionOrigTotal += deltaOrig;
       sessionCount += 1;
-      // Update bar
+      // Update compression ratio bar
       const pct = sessionOrigTotal > 0 ? Math.round((sessionSaved / sessionOrigTotal) * 100) : 0;
       document.getElementById('barWrap').style.display = 'block';
       document.getElementById('barFill').style.width = `${pct}%`;
       document.getElementById('barOrig').textContent = formatNum(sessionOrigTotal);
       document.getElementById('barComp').textContent = formatNum(sessionOrigTotal - sessionSaved);
+      // Live update counts without full re-render
+      document.getElementById('sessionSaved').textContent = formatNum(sessionSaved);
+      document.getElementById('compressionCount').textContent = sessionCount;
+      document.getElementById('avgPct').textContent = `${pct}%`;
     }
     render();
+  }
+
+  if (changes.lastCompression) {
+    const lc = changes.lastCompression.newValue;
+    if (!lc) return;
+    const badge = document.getElementById('sourceBadge');
+    const row = document.getElementById('sourceRow');
+    const time = document.getElementById('sourceTime');
+    if (badge && row) {
+      const src = lc.source || 'local';
+      badge.textContent = src;
+      badge.className = 'source-badge ' + src;
+      if (time) {
+        const t = lc.ts ? new Date(lc.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+        time.textContent = lc.savedPct ? `-${lc.savedPct}% · ${t}` : t;
+      }
+      row.style.display = 'flex';
+    }
+  }
+});
+
+// Restore source badge from storage on popup open
+chrome.storage.local.get('lastCompression', (r) => {
+  const lc = r.lastCompression;
+  if (!lc) return;
+  const badge = document.getElementById('sourceBadge');
+  const row = document.getElementById('sourceRow');
+  const time = document.getElementById('sourceTime');
+  if (badge && row) {
+    const src = lc.source || 'local';
+    badge.textContent = src;
+    badge.className = 'source-badge ' + src;
+    if (time) {
+      const t = lc.ts ? new Date(lc.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+      time.textContent = lc.savedPct ? `-${lc.savedPct}% · ${t}` : t;
+    }
+    row.style.display = 'flex';
   }
 });
 

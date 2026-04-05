@@ -7,6 +7,7 @@
   "host_permissions": [
     "https://claude.ai/*",
     "https://api.anthropic.com/*",
+    "https://api.groq.com/*",
     "https://chatgpt.com/*",
     "https://chat.openai.com/*"
   ],

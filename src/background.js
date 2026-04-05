@@ -41,6 +41,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           localThreshold: settings.localThreshold ?? 20,
           cacheEnabled: settings.cacheEnabled !== false,
         });
+        // Save last compression event for popup live badge
+        if (result.source && result.source !== 'none') {
+          chrome.storage.local.set({
+            lastCompression: {
+              source: result.source,
+              stats: result.stats,
+              savedPct: result.stats ? result.stats.pct : 0,
+              ts: Date.now(),
+            },
+          });
+        }
         sendResponse({
           success: !result.error && result.source !== 'none',
           compressed: result.compressed,
