@@ -85,6 +85,17 @@ function isEditable(el) {
   return false;
 }
 
+// ── Clipboard fallback (nuclear option) ──────────────────────────────────────
+
+async function getTextFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    return text ? text.trim() : '';
+  } catch (_) {
+    return '';
+  }
+}
+
 // ── Paste-aware text reader ───────────────────────────────────────────────────
 
 /**
@@ -187,7 +198,15 @@ async function handleCompress(e) {
   btn.classList.add('compressing');
   btn.innerHTML = '<span class="ts-spinner"></span>';
 
-  const text = await getTextWithRetry(adapter, ta);
+  let text = await getTextWithRetry(adapter, ta);
+
+  // Nuclear fallback: DOM strategies all returned empty — read clipboard directly
+  // (covers cases where ProseMirror state is obfuscated and innerText lags)
+  if (!text || text.length < 10) {
+    console.log('[TokenShrink] DOM getText empty — trying clipboard fallback');
+    text = await getTextFromClipboard();
+  }
+
   if (!text || text.length < 10) {
     btn.innerHTML = '<span style="color:#ff6b6b;font-size:10px">empty</span>';
     setTimeout(() => { if (btn) btn.innerHTML = '⚡'; }, 1500);
@@ -216,18 +235,19 @@ async function handleCompress(e) {
       await new Promise((r) => setTimeout(r, 100));
       const actualText = adapter.getText(ta);
       const setTextOk = actualText.trim() === result.compressed.trim();
+      console.log('[TokenShrink] Compressed:', result.source, (result.stats?.pct || 0) + '% saved', setTextOk ? '✓ setText ok' : '✗ setText failed');
       if (!setTextOk) {
-        console.warn('[TokenShrink] setText verification failed');
         console.warn('[TokenShrink] Expected:', result.compressed.slice(0, 80));
-        console.warn('[TokenShrink] Got:', actualText.slice(0, 80));
+        console.warn('[TokenShrink] Got:     ', actualText.slice(0, 80));
       }
-      console.log('[TokenShrink] Compressed:', result.source, (result.stats?.pct || 0) + '% saved');
 
-      if (currentSettings?.showToast && result.stats?.saved > 0) {
+      if (currentSettings?.showToast !== false) {
         showToast({
           source: result.source || 'local',
-          savedPct: result.stats.pct || 0,
-          savedTokens: result.stats.saved || 0,
+          savedPct: result.stats?.pct || 0,
+          savedTokens: result.stats?.saved || 0,
+          // If setText failed, pass compressed text so user gets a Copy button
+          compressedText: setTextOk ? undefined : result.compressed,
         });
       }
 

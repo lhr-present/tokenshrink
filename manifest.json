@@ -3,7 +3,7 @@
   "name": "TokenShrink",
   "version": "0.1.0",
   "description": "Automatically compresses prompts to minimum tokens before sending. Saves API costs on every request.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "clipboardRead"],
   "host_permissions": [
     "https://claude.ai/*",
     "https://api.anthropic.com/*",
