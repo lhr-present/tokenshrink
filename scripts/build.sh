@@ -62,8 +62,18 @@ mkdir -p releases
 cd dist/chrome && zip -r ../../releases/tokenshrink-chrome-v$VERSION.zip . -x "*.DS_Store" && cd ../..
 cd dist/firefox && zip -r ../../releases/tokenshrink-firefox-v$VERSION.zip . -x "*.DS_Store" && cd ../..
 
+# Build standalone CLI binary (Node.js, no dependencies)
+npx esbuild bin/compress.js \
+  --bundle \
+  --platform=node \
+  --target=node18 \
+  --outfile=dist/compress \
+  --format=cjs \
+  --log-level=warning
+chmod +x dist/compress
+
 echo ""
-echo "Build complete: TokenShrink v$VERSION (Chrome + Firefox)"
+echo "Build complete: TokenShrink v$VERSION (Chrome + Firefox + CLI)"
 ls -lh releases/
 
 echo "--- Bundle sizes ---"
