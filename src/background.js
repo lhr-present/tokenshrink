@@ -26,19 +26,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     switch (message.action) {
       case 'COMPRESS': {
         const settings = await getSettings();
-        if (!settings.apiKey) {
-          sendResponse({ success: false, error: 'No API key. Set it in extension options.' });
+        // Local backend needs no API key — always allow
+        const needsKey = settings.backend === 'anthropic';
+        if (needsKey && !settings.apiKey) {
+          sendResponse({ success: false, error: 'No Anthropic API key. Set it in extension options.' });
           return;
         }
         const result = await compress(message.text, {
-          apiKey: settings.apiKey,
+          apiKey: settings.apiKey || '',
+          groqApiKey: settings.groqApiKey || '',
           mode: message.mode || settings.aggressiveness,
-          timeoutMs: settings.timeoutMs,
+          backend: settings.backend || 'auto',
+          timeoutMs: settings.timeoutMs || 8000,
+          localThreshold: settings.localThreshold ?? 20,
+          cacheEnabled: settings.cacheEnabled !== false,
         });
         sendResponse({
-          success: !result.error,
+          success: !result.error && result.source !== 'none',
           compressed: result.compressed,
           stats: result.stats,
+          source: result.source,
           error: result.error,
         });
         break;
@@ -72,18 +79,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
       case 'TEST_CONNECTION': {
         const settings = await getSettings();
-        if (!settings.apiKey) {
-          sendResponse({ ok: false, error: 'No API key' });
+        const testBackend = message.backend || settings.backend || 'auto';
+        const needsApiKey = testBackend === 'anthropic' || (testBackend === 'auto' && !settings.groqApiKey);
+        if (needsApiKey && !settings.apiKey) {
+          sendResponse({ ok: false, error: 'No API key configured for selected backend' });
           return;
         }
         const start = Date.now();
         const result = await compress('Hello, please compress this short test message for me.', {
-          apiKey: settings.apiKey,
+          apiKey: settings.apiKey || '',
+          groqApiKey: settings.groqApiKey || '',
           mode: 'balanced',
+          backend: testBackend,
           timeoutMs: 10000,
+          cacheEnabled: false,
         });
         const latencyMs = Date.now() - start;
-        sendResponse({ ok: !result.error, latencyMs, error: result.error });
+        sendResponse({ ok: result.source !== 'none', latencyMs, source: result.source, error: result.error });
         break;
       }
 
@@ -99,12 +111,16 @@ async function getSettings() {
     chrome.storage.local.get('settings', (r) => {
       const defaults = {
         apiKey: '',
+        groqApiKey: '',
         enabled: true,
         aggressiveness: 'balanced',
+        backend: 'auto',
         timeoutMs: 8000,
         showIndicator: true,
         showToast: true,
         platforms: ['claude.ai'],
+        localThreshold: 20,
+        cacheEnabled: true,
       };
       resolve({ ...defaults, ...(r.settings || {}) });
     });

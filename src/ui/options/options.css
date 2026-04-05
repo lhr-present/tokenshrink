@@ -142,6 +142,30 @@ select { appearance: none; cursor: pointer; }
 .preview-wrap { margin-top: 12px; }
 .preview-stats { font-size: 10px; color: var(--accent); margin-top: 4px; min-height: 16px; }
 
+/* Backend radios */
+.backend-radios { display: flex; flex-direction: column; gap: 6px; }
+.backend-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.backend-radio:hover { border-color: #333; }
+.backend-radio input[type="radio"] { margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
+.backend-radio input[type="radio"]:checked ~ .backend-info { color: var(--text); }
+.backend-radio:has(input:checked) { border-color: var(--accent); background: var(--accent-dim); }
+.backend-info { display: flex; flex-direction: column; gap: 3px; }
+.backend-info strong { font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.backend-info small { font-size: 10px; color: var(--text-dim); }
+.badge.free { background: rgba(0,200,100,0.15); color: #00c864; border: 1px solid rgba(0,200,100,0.3); }
+.badge.paid { background: rgba(255,180,0,0.1); color: #ffb400; border: 1px solid rgba(255,180,0,0.3); }
+.link-small { font-size: 10px; color: var(--accent); text-decoration: none; }
+.link-small:hover { text-decoration: underline; }
+
 /* Platforms */
 .platform-list { display: flex; flex-direction: column; gap: 8px; }
 .platform-row {

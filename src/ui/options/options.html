@@ -68,7 +68,69 @@
       </div>
     </section>
 
-    <!-- SECTION 3: PLATFORMS -->
+    <!-- SECTION 3: BACKEND -->
+    <section>
+      <h2>Compression Backend</h2>
+      <p class="field-note" style="margin-bottom:14px; line-height:1.6; color:#888">
+        Auto uses local rules first (free), then Groq free tier (14,400/day free), then Anthropic Haiku only if needed.
+      </p>
+      <div class="backend-radios">
+        <label class="backend-radio">
+          <input type="radio" name="backend" value="auto">
+          <div class="backend-info">
+            <strong>Auto <span class="badge active">Recommended</span></strong>
+            <small>Local → Groq → Anthropic. Uses cheapest option that meets threshold.</small>
+          </div>
+        </label>
+        <label class="backend-radio">
+          <input type="radio" name="backend" value="local">
+          <div class="backend-info">
+            <strong>Local only <span class="badge free">Free forever</span></strong>
+            <small>Pure JS rules. ~20-35% reduction. No API key required.</small>
+          </div>
+        </label>
+        <label class="backend-radio">
+          <input type="radio" name="backend" value="groq">
+          <div class="backend-info">
+            <strong>Groq <span class="badge free">Free tier</span></strong>
+            <small>Llama 3.1 8B. ~45-55% reduction. 14,400 free calls/day.</small>
+          </div>
+        </label>
+        <label class="backend-radio">
+          <input type="radio" name="backend" value="anthropic">
+          <div class="backend-info">
+            <strong>Anthropic Haiku <span class="badge paid">~$0.00025/call</span></strong>
+            <small>Highest quality. ~50-65% reduction. Requires API key above.</small>
+          </div>
+        </label>
+      </div>
+
+      <div class="field-group" id="groqKeyGroup" style="margin-top:16px">
+        <label for="groqApiKey">Groq API Key <a href="https://console.groq.com" target="_blank" class="link-small">Get free key →</a></label>
+        <div class="input-row">
+          <input type="password" id="groqApiKey" placeholder="gsk_..." autocomplete="off" spellcheck="false">
+          <button id="showHideGroqKey" class="btn-icon" title="Show/hide">👁</button>
+          <button id="testGroqConnection" class="btn-secondary">Test</button>
+        </div>
+        <div id="groqTestResult" class="test-result"></div>
+      </div>
+
+      <div class="field-group" style="margin-top:12px">
+        <label for="localThreshold">Skip API if local rules save ≥ <span id="thresholdVal">20</span>%</label>
+        <input type="range" id="localThreshold" min="0" max="50" step="5" value="20">
+        <div class="range-labels"><span>0%</span><span>25%</span><span>50%</span></div>
+      </div>
+
+      <div class="toggle-row" style="margin-top:8px">
+        <div>
+          <strong>Enable compression cache</strong>
+          <small>Skip API for identical prompts (SHA-256 keyed, max 500 entries)</small>
+        </div>
+        <label class="toggle-wrap"><input type="checkbox" id="cacheEnabled" checked><span class="toggle-slider"></span></label>
+      </div>
+    </section>
+
+    <!-- SECTION 4: PLATFORMS -->
     <section>
       <h2>Platforms</h2>
       <div class="platform-list">
