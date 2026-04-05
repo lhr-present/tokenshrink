@@ -60,57 +60,107 @@ export default {
   },
 
   getText(el) {
-    return (el.innerText || el.textContent || '').trim();
+    // Strategy 1: ProseMirror EditorView internal state — reads true content
+    // regardless of DOM update timing (bypasses async transaction lag)
+    try {
+      let node = el;
+      for (let i = 0; i < 5; i++) {
+        const keys = Object.keys(node);
+        for (const key of keys) {
+          try {
+            const val = node[key];
+            // ProseMirror EditorView: .state.doc.textContent
+            if (val?.state?.doc?.textContent !== undefined) {
+              const text = val.state.doc.textContent;
+              if (text && text.trim().length > 0) return text.trim();
+            }
+            // React fiber path: memoizedProps.editorState.doc.textContent
+            if (val?.memoizedProps?.editorState?.doc?.textContent !== undefined) {
+              return val.memoizedProps.editorState.doc.textContent.trim();
+            }
+          } catch (_) {}
+        }
+        node = node.parentElement;
+        if (!node) break;
+      }
+    } catch (_) {}
+
+    // Strategy 2: Read all <p> nodes — handles paste wrapping in paragraph nodes
+    try {
+      const paragraphs = el.querySelectorAll('p, div:not([contenteditable])');
+      if (paragraphs.length > 0) {
+        const text = Array.from(paragraphs)
+          .map((p) => p.textContent || '')
+          .join('\n')
+          .trim();
+        if (text.length > 0) return text;
+      }
+    } catch (_) {}
+
+    // Strategy 3: innerText (handles formatted content with newlines)
+    try {
+      const text = el.innerText;
+      if (text && text.trim().length > 0) return text.trim();
+    } catch (_) {}
+
+    // Strategy 4: textContent fallback
+    return (el.textContent || '').trim();
   },
 
   setText(el, text) {
     el.focus();
 
-    // Strategy 1: beforeinput (ProseMirror's transaction system listens to this)
-    // Select all first, then insert — the only reliable path for ProseMirror/claude.ai
+    // Strategy 1: deleteContentBackward then insertText via beforeinput
+    // ProseMirror processes both events through its transaction system
     try {
       document.execCommand('selectAll', false, null);
-      const beforeInput = new InputEvent('beforeinput', {
-        bubbles: true, cancelable: true,
-        inputType: 'insertText', data: text,
-      });
-      el.dispatchEvent(beforeInput);
-      if ((el.innerText || el.textContent || '').trim() === text.trim()) return true;
+      el.dispatchEvent(new InputEvent('beforeinput', {
+        bubbles: true, cancelable: true, inputType: 'deleteContentBackward',
+      }));
+      el.dispatchEvent(new InputEvent('beforeinput', {
+        bubbles: true, cancelable: true, inputType: 'insertText', data: text,
+      }));
+      if (this.getText(el) === text.trim()) return true;
     } catch (_) {}
 
-    // Strategy 2: insertFromPaste — ProseMirror also handles this ClipboardEvent
+    // Strategy 2: insertFromPaste via beforeinput + DataTransfer
     try {
+      document.execCommand('selectAll', false, null);
       const dt = new DataTransfer();
       dt.setData('text/plain', text);
-      el.dispatchEvent(new ClipboardEvent('paste', {
-        bubbles: true, cancelable: true, clipboardData: dt,
+      el.dispatchEvent(new InputEvent('beforeinput', {
+        bubbles: true, cancelable: true,
+        inputType: 'insertFromPaste', dataTransfer: dt,
       }));
-      if ((el.innerText || el.textContent || '').trim() === text.trim()) return true;
+      if (this.getText(el) === text.trim()) return true;
     } catch (_) {}
 
-    // Strategy 3: execCommand insertText (standard contenteditable fallback)
+    // Strategy 3: ClipboardEvent paste with text/plain + text/html
+    try {
+      document.execCommand('selectAll', false, null);
+      const dt2 = new DataTransfer();
+      dt2.setData('text/plain', text);
+      dt2.setData('text/html', `<p>${text.replace(/\n/g, '</p><p>')}</p>`);
+      el.dispatchEvent(new ClipboardEvent('paste', {
+        bubbles: true, cancelable: true, clipboardData: dt2,
+      }));
+      if (this.getText(el) === text.trim()) return true;
+    } catch (_) {}
+
+    // Strategy 4: execCommand selectAll + insertText
     try {
       document.execCommand('selectAll', false, null);
       const ok = document.execCommand('insertText', false, text);
-      if (ok && (el.innerText || el.textContent || '').trim() === text.trim()) return true;
+      if (ok && this.getText(el) === text.trim()) return true;
     } catch (_) {}
 
-    // Strategy 4: React fiber / native setter override
+    // Strategy 5: Direct DOM clear + innerText + input event (last resort)
     try {
-      const proto = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerText');
-      if (proto?.set) proto.set.call(el, text);
-      else el.innerText = text;
+      while (el.firstChild) el.removeChild(el.firstChild);
+      el.innerText = text;
       el.dispatchEvent(new InputEvent('input', {
         bubbles: true, cancelable: true, inputType: 'insertText', data: text,
       }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
-    } catch (_) {}
-
-    // Strategy 5: textContent + input event (absolute last resort)
-    try {
-      el.textContent = text;
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
     } catch (_) {}
     return true;
   },

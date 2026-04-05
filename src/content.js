@@ -56,14 +56,15 @@ const BTN_CSS = `
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let shadowHost    = null;   // <tokenshrink-root> in document.body
-let shadowRoot    = null;   // The shadow root
-let btn           = null;   // The ⚡ button inside shadow
+let shadowHost      = null;   // <tokenshrink-root> in document.body
+let shadowRoot      = null;   // The shadow root
+let btn             = null;   // The ⚡ button inside shadow
 let currentSettings = null;
-let isCompressing = false;
-let cleanupFns    = [];     // SponsorBlock-style cleanup registry
-let pollTimer     = null;
-let observer      = null;
+let isCompressing   = false;
+let cleanupFns      = [];     // SponsorBlock-style cleanup registry
+let pollTimer       = null;
+let observer        = null;
+let lastPasteTime   = 0;      // Timestamp of most recent paste event
 
 // ── isEditable (Vimium DomUtils pattern) ─────────────────────────────────────
 
@@ -82,6 +83,27 @@ function isEditable(el) {
     return !['button','checkbox','color','file','hidden','image','radio','reset','submit'].includes(type);
   }
   return false;
+}
+
+// ── Paste-aware text reader ───────────────────────────────────────────────────
+
+/**
+ * Polls adapter.getText() until content is non-empty or timeout.
+ * Waits longer when a paste was detected recently — ProseMirror processes
+ * paste asynchronously and DOM may lag by 200–800ms after a paste event.
+ */
+async function getTextWithRetry(adapter, ta) {
+  const msSincePaste = Date.now() - lastPasteTime;
+  const waitMs = msSincePaste < 1000 ? 800 : 300;
+  const interval = 50;
+  const maxTries = Math.ceil(waitMs / interval);
+  let text = '';
+  for (let i = 0; i < maxTries; i++) {
+    text = adapter.getText(ta);
+    if (text && text.trim().length >= 10) return text.trim();
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  return text.trim();
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -160,10 +182,20 @@ async function handleCompress(e) {
   const ta = adapter.getTextarea();
   if (!ta) return;
 
-  const text = adapter.getText(ta);
-  if (!text || text.trim().length < 10) return;
-
+  // Wait for ProseMirror to settle (especially after paste — async transaction)
   isCompressing = true;
+  btn.classList.add('compressing');
+  btn.innerHTML = '<span class="ts-spinner"></span>';
+
+  const text = await getTextWithRetry(adapter, ta);
+  if (!text || text.length < 10) {
+    btn.innerHTML = '<span style="color:#ff6b6b;font-size:10px">empty</span>';
+    setTimeout(() => { if (btn) btn.innerHTML = '⚡'; }, 1500);
+    isCompressing = false;
+    btn.classList.remove('compressing');
+    return;
+  }
+  console.log('[TokenShrink] Read text (' + text.length + ' chars):', text.slice(0, 60) + (text.length > 60 ? '...' : ''));
   btn.classList.add('compressing');
   btn.innerHTML = '<span class="ts-spinner"></span>';
 
@@ -244,6 +276,11 @@ async function init() {
   const host = window.location.hostname;
   const platformEnabled = currentSettings.platforms?.some((p) => host.includes(p));
   if (!platformEnabled) return;
+
+  // Track paste timing — capture phase fires before ProseMirror processes it
+  const pasteHandler = () => { lastPasteTime = Date.now(); };
+  document.addEventListener('paste', pasteHandler, true);
+  cleanupFns.push(() => document.removeEventListener('paste', pasteHandler, true));
 
   // Poll until adapter.isReady() — textarea visible in DOM
   pollTimer = setInterval(() => {
