@@ -66,21 +66,40 @@ export default {
   setText(el, text) {
     el.focus();
 
-    // Strategy 1: execCommand (standard contenteditable)
+    // Strategy 1: beforeinput (ProseMirror's transaction system listens to this)
+    // Select all first, then insert — the only reliable path for ProseMirror/claude.ai
+    try {
+      document.execCommand('selectAll', false, null);
+      const beforeInput = new InputEvent('beforeinput', {
+        bubbles: true, cancelable: true,
+        inputType: 'insertText', data: text,
+      });
+      el.dispatchEvent(beforeInput);
+      if ((el.innerText || el.textContent || '').trim() === text.trim()) return true;
+    } catch (_) {}
+
+    // Strategy 2: insertFromPaste — ProseMirror also handles this ClipboardEvent
+    try {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      el.dispatchEvent(new ClipboardEvent('paste', {
+        bubbles: true, cancelable: true, clipboardData: dt,
+      }));
+      if ((el.innerText || el.textContent || '').trim() === text.trim()) return true;
+    } catch (_) {}
+
+    // Strategy 3: execCommand insertText (standard contenteditable fallback)
     try {
       document.execCommand('selectAll', false, null);
       const ok = document.execCommand('insertText', false, text);
       if (ok && (el.innerText || el.textContent || '').trim() === text.trim()) return true;
     } catch (_) {}
 
-    // Strategy 2: React fiber / controlled element — native setter override
+    // Strategy 4: React fiber / native setter override
     try {
       const proto = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerText');
-      if (proto?.set) {
-        proto.set.call(el, text);
-      } else {
-        el.innerText = text;
-      }
+      if (proto?.set) proto.set.call(el, text);
+      else el.innerText = text;
       el.dispatchEvent(new InputEvent('input', {
         bubbles: true, cancelable: true, inputType: 'insertText', data: text,
       }));
@@ -88,9 +107,11 @@ export default {
       return true;
     } catch (_) {}
 
-    // Strategy 3: textContent + synthetic event (last resort)
-    el.textContent = text;
-    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    // Strategy 5: textContent + input event (absolute last resort)
+    try {
+      el.textContent = text;
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    } catch (_) {}
     return true;
   },
 

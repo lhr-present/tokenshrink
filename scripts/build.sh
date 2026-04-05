@@ -65,3 +65,13 @@ cd dist/firefox && zip -r ../../releases/tokenshrink-firefox-v$VERSION.zip . -x 
 echo ""
 echo "Build complete: TokenShrink v$VERSION (Chrome + Firefox)"
 ls -lh releases/
+
+echo "--- Bundle sizes ---"
+ls -lh dist/chrome/content.js dist/chrome/background.js
+echo "--- Import check ---"
+[ "$(grep -c '^import ' dist/chrome/content.js)" = "0" ] && echo "✓ content.js clean" || echo "FAIL: bare imports in content.js"
+[ "$(grep -c '^import ' dist/chrome/background.js)" = "0" ] && echo "✓ background.js clean" || echo "FAIL: bare imports in background.js"
+echo "--- type=module check ---"
+grep -r 'type="module"' dist/chrome/ && echo "FAIL: type=module found" || echo "✓ no type=module"
+echo "--- manifest content_scripts path ---"
+node -e "const m=JSON.parse(require('fs').readFileSync('dist/chrome/manifest.json')); console.log('js:', m.content_scripts[0].js)"

@@ -18,14 +18,11 @@ import { showToast } from './ui/toast.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const HOST_TAG    = 'tokenshrink-root';
+const HOST_TAG = 'tokenshrink-root';
+// Button position is set dynamically on the host element — no fixed coords in CSS
 const BTN_CSS = `
-  :host { all: initial; display: contents; }
+  :host { all: initial; }
   #ts-btn {
-    position: fixed;
-    bottom: 82px;
-    right: 68px;
-    z-index: 2147483645;
     width: 32px;
     height: 32px;
     border-radius: 6px;
@@ -122,6 +119,24 @@ function createShadowButton() {
   shadowRoot.appendChild(btn);
 
   document.body.appendChild(shadowHost);
+  requestAnimationFrame(() => positionButton());
+}
+
+// ── Dynamic button positioning ────────────────────────────────────────────────
+
+function positionButton() {
+  if (!shadowHost) return;
+  const adapter = getAdapter();
+  const sendBtn = adapter?.getSendButton();
+  if (sendBtn) {
+    const rect = sendBtn.getBoundingClientRect();
+    const top   = rect.top + (rect.height / 2) - 16;
+    const right = window.innerWidth - rect.left + 6;
+    shadowHost.style.cssText = `position:fixed;top:${top}px;right:${right}px;z-index:2147483645;display:block;`;
+  } else {
+    // Fallback: bottom-right corner
+    shadowHost.style.cssText = `position:fixed;bottom:90px;right:72px;z-index:2147483645;display:block;`;
+  }
 }
 
 function destroyShadowButton() {
@@ -164,6 +179,17 @@ async function handleCompress(e) {
     if (result?.success && result.compressed && result.compressed !== text.trim()) {
       adapter.setText(ta, result.compressed);
       ta.focus();
+
+      // Verify setText worked — wait for ProseMirror to process transaction
+      await new Promise((r) => setTimeout(r, 100));
+      const actualText = adapter.getText(ta);
+      const setTextOk = actualText.trim() === result.compressed.trim();
+      if (!setTextOk) {
+        console.warn('[TokenShrink] setText verification failed');
+        console.warn('[TokenShrink] Expected:', result.compressed.slice(0, 80));
+        console.warn('[TokenShrink] Got:', actualText.slice(0, 80));
+      }
+      console.log('[TokenShrink] Compressed:', result.source, (result.stats?.pct || 0) + '% saved');
 
       if (currentSettings?.showToast && result.stats?.saved > 0) {
         showToast({
@@ -233,10 +259,17 @@ async function init() {
   observer = new MutationObserver(() => {
     if (adapter.isReady() && !document.querySelector(HOST_TAG)) {
       createShadowButton();
+    } else {
+      positionButton(); // send button may have moved
     }
   });
   observer.observe(document.body, { childList: true, subtree: true });
   cleanupFns.push(() => observer.disconnect());
+
+  // ResizeObserver: reposition on layout changes (zoom, sidebar open/close)
+  const ro = new ResizeObserver(() => positionButton());
+  ro.observe(document.body);
+  cleanupFns.push(() => ro.disconnect());
 }
 
 // ── SPA navigation (History API patch) ───────────────────────────────────────
