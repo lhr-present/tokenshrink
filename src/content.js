@@ -1,153 +1,214 @@
 /**
  * @module content
- * Injects a floating ⚡ compress button next to claude.ai's send button.
- * No send interception — user compresses then sends manually.
- * Resilient to SPA navigation via MutationObserver.
+ * Injects a floating ⚡ compress button inside a Shadow DOM container.
+ *
+ * Architecture (from deep-dive research):
+ *   - Shadow DOM (Plasmo CSUI pattern): button lives in shadow root —
+ *     no CSS bleed in or out, no event leakage to host page.
+ *   - isEditable() (Vimium pattern): guarantees we never consume
+ *     keyboard events meant for inputs or send buttons.
+ *   - isTrusted gate (uBlock pattern): ignore synthetic events.
+ *   - Cleanup registry (SponsorBlock pattern): all listeners torn down
+ *     on SPA navigation.
+ *   - NO stopPropagation on host-page events — shadow boundary handles it.
  */
 
 import { getAdapter } from './adapters/index.js';
 import { showToast } from './ui/toast.js';
 
-const BTN_ID = 'tokenshrink-btn';
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const HOST_TAG    = 'tokenshrink-root';
+const BTN_CSS = `
+  :host { all: initial; display: contents; }
+  #ts-btn {
+    position: fixed;
+    bottom: 82px;
+    right: 68px;
+    z-index: 2147483645;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid rgba(0,255,140,0.3);
+    background: #111;
+    color: #00ff8c;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    padding: 0;
+    line-height: 1;
+  }
+  #ts-btn:hover { background:#1a2a1a; border-color:#00ff8c; box-shadow:0 2px 12px rgba(0,255,140,0.2); }
+  #ts-btn.compressing { cursor: wait; }
+  #ts-btn.done { background: rgba(0,255,140,0.1); }
+  .ts-spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid #00ff8c;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: ts-spin 0.6s linear infinite;
+  }
+  @keyframes ts-spin { to { transform: rotate(360deg); } }
+`;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let shadowHost    = null;   // <tokenshrink-root> in document.body
+let shadowRoot    = null;   // The shadow root
+let btn           = null;   // The ⚡ button inside shadow
 let currentSettings = null;
 let isCompressing = false;
+let cleanupFns    = [];     // SponsorBlock-style cleanup registry
+let pollTimer     = null;
+let observer      = null;
+
+// ── isEditable (Vimium DomUtils pattern) ─────────────────────────────────────
+
+/**
+ * Returns true if the element is a text-input surface.
+ * Vimium's unselectableTypes list — keyboard events here belong to typing, not shortcuts.
+ */
+function isEditable(el) {
+  if (!el || !(el instanceof Element)) return false;
+  const tag = el.nodeName.toLowerCase();
+  const ce = el.getAttribute('contenteditable');
+  if (ce === 'true' || ce === '' || el.isContentEditable) return true;
+  if (tag === 'select' || tag === 'textarea') return true;
+  if (tag === 'input') {
+    const type = (el.type || 'text').toLowerCase();
+    return !['button','checkbox','color','file','hidden','image','radio','reset','submit'].includes(type);
+  }
+  return false;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
 
 function getSettings() {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: 'GET_SETTINGS' }, (r) => {
-      resolve(r || {});
-    });
+    chrome.runtime.sendMessage({ action: 'GET_SETTINGS' }, (r) => resolve(r || {}));
   });
 }
 
-function removeButton() {
-  document.getElementById(BTN_ID)?.remove();
-}
+// ── Shadow DOM creation (Plasmo CSUI pattern) ─────────────────────────────────
 
-function injectButton(adapter) {
-  if (document.getElementById(BTN_ID)) return;
+function createShadowButton() {
+  if (document.querySelector(HOST_TAG)) return; // already mounted
 
-  const btn = document.createElement('button');
-  btn.id = BTN_ID;
+  shadowHost = document.createElement(HOST_TAG);
+  shadowHost.style.display = 'contents';
+  shadowRoot = shadowHost.attachShadow({ mode: 'open' });
+
+  // Inject scoped CSS — prepend so styles resolve before elements
+  const style = document.createElement('style');
+  style.textContent = BTN_CSS;
+  shadowRoot.prepend(style);
+
+  // Build the button inside shadow root
+  btn = document.createElement('button');
+  btn.id = 'ts-btn';
   btn.title = 'TokenShrink: compress prompt';
-  btn.innerHTML = '⚡';
   btn.setAttribute('aria-label', 'Compress with TokenShrink');
   btn.setAttribute('type', 'button');
+  btn.innerHTML = '⚡';
 
-  Object.assign(btn.style, {
-    position: 'fixed',
-    bottom: '82px',
-    right: '68px',
-    zIndex: '2147483645',
-    width: '32px',
-    height: '32px',
-    borderRadius: '6px',
-    border: '1px solid rgba(0,255,140,0.3)',
-    background: '#111',
-    color: '#00ff8c',
-    fontSize: '16px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontFamily: 'monospace',
-    transition: 'all 0.15s',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-    padding: '0',
-    lineHeight: '1',
-  });
+  // Click handler — no stopPropagation (shadow boundary handles isolation)
+  btn.addEventListener('click', handleCompress);
+  shadowRoot.appendChild(btn);
 
-  btn.addEventListener('mouseenter', () => {
-    if (!isCompressing) {
-      btn.style.background = '#1a2a1a';
-      btn.style.borderColor = '#00ff8c';
-      btn.style.boxShadow = '0 2px 12px rgba(0,255,140,0.2)';
-    }
-  });
+  document.body.appendChild(shadowHost);
+}
 
-  btn.addEventListener('mouseleave', () => {
-    if (!isCompressing) {
-      btn.style.background = '#111';
-      btn.style.borderColor = 'rgba(0,255,140,0.3)';
-      btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
-    }
-  });
+function destroyShadowButton() {
+  if (shadowHost && shadowHost.parentNode) {
+    shadowHost.parentNode.removeChild(shadowHost);
+  }
+  shadowHost = null;
+  shadowRoot = null;
+  btn = null;
+}
 
-  btn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (isCompressing) return;
+// ── Compress handler ──────────────────────────────────────────────────────────
 
-    const ta = adapter.getTextarea();
-    if (!ta) return;
+async function handleCompress(e) {
+  // isTrusted gate (uBlock pattern) — ignore synthetic events
+  if (!e.isTrusted) return;
+  if (isCompressing) return;
 
-    const text = adapter.getText(ta);
-    if (!text || text.trim().length < 10) return;
+  const adapter = getAdapter();
+  if (!adapter) return;
+  const ta = adapter.getTextarea();
+  if (!ta) return;
 
-    // Visual: compressing state
-    isCompressing = true;
-    btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #00ff8c;border-top-color:transparent;border-radius:50%;animation:ts-spin2 0.6s linear infinite"></span>';
-    btn.style.cursor = 'wait';
+  const text = adapter.getText(ta);
+  if (!text || text.trim().length < 10) return;
 
-    // Inject keyframe if not present
-    if (!document.getElementById('ts-spin-style')) {
-      const style = document.createElement('style');
-      style.id = 'ts-spin-style';
-      style.textContent = '@keyframes ts-spin2{to{transform:rotate(360deg)}}';
-      document.head.appendChild(style);
-    }
+  isCompressing = true;
+  btn.classList.add('compressing');
+  btn.innerHTML = '<span class="ts-spinner"></span>';
 
-    try {
-      const result = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-          action: 'COMPRESS',
-          text: text.trim(),
-          mode: currentSettings?.aggressiveness || 'balanced',
-        }, resolve);
-      });
+  try {
+    const result = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        action: 'COMPRESS',
+        text: text.trim(),
+        mode: currentSettings?.aggressiveness || 'balanced',
+      }, resolve);
+    });
 
-      if (result?.success && result.compressed && result.compressed !== text.trim()) {
-        adapter.setText(ta, result.compressed);
-        ta.focus();
+    if (result?.success && result.compressed && result.compressed !== text.trim()) {
+      adapter.setText(ta, result.compressed);
+      ta.focus();
 
-        if (currentSettings?.showToast && result.stats?.saved > 0) {
-          showToast({
-            source: result.source || 'local',
-            savedPct: result.stats.pct || 0,
-            savedTokens: result.stats.saved || 0,
-          });
-        }
-
-        if (result.stats) {
-          chrome.runtime.sendMessage({ action: 'SAVE_STATS', stats: result.stats });
-        }
-
-        // Flash green ✓
-        btn.innerHTML = '✓';
-        btn.style.color = '#00ff8c';
-        btn.style.background = 'rgba(0,255,140,0.1)';
-        setTimeout(() => {
-          btn.innerHTML = '⚡';
-          btn.style.color = '#00ff8c';
-          btn.style.background = '#111';
-        }, 1200);
-      } else {
-        btn.innerHTML = '⚡';
-        btn.style.color = result?.error ? '#ff6b6b' : '#00ff8c';
-        setTimeout(() => { btn.style.color = '#00ff8c'; }, 1000);
+      if (currentSettings?.showToast && result.stats?.saved > 0) {
+        showToast({
+          source: result.source || 'local',
+          savedPct: result.stats.pct || 0,
+          savedTokens: result.stats.saved || 0,
+        });
       }
-    } catch (err) {
-      btn.innerHTML = '⚡';
-    } finally {
-      isCompressing = false;
-      btn.style.cursor = 'pointer';
-    }
-  });
 
-  document.body.appendChild(btn);
+      if (result.stats) {
+        chrome.runtime.sendMessage({ action: 'SAVE_STATS', stats: result.stats });
+      }
+
+      // Flash ✓
+      btn.classList.remove('compressing');
+      btn.classList.add('done');
+      btn.innerHTML = '✓';
+      setTimeout(() => {
+        if (btn) { btn.innerHTML = '⚡'; btn.classList.remove('done'); }
+      }, 1200);
+    } else {
+      btn.innerHTML = result?.error ? '<span style="color:#ff6b6b">⚡</span>' : '⚡';
+      setTimeout(() => { if (btn) btn.innerHTML = '⚡'; }, 1000);
+    }
+  } catch (_) {
+    if (btn) btn.innerHTML = '⚡';
+  } finally {
+    isCompressing = false;
+    if (btn) btn.classList.remove('compressing');
+  }
+}
+
+// ── Init / teardown ───────────────────────────────────────────────────────────
+
+function teardown() {
+  cleanupFns.forEach((fn) => fn());
+  cleanupFns = [];
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (observer)  { observer.disconnect(); observer = null; }
+  destroyShadowButton();
 }
 
 async function init() {
+  teardown(); // clean slate on every SPA navigation
+
   const adapter = getAdapter();
   if (!adapter) return;
 
@@ -155,40 +216,48 @@ async function init() {
   if (!currentSettings?.enabled) return;
 
   const host = window.location.hostname;
-  const platformEnabled = currentSettings.platforms?.some(p => host.includes(p));
+  const platformEnabled = currentSettings.platforms?.some((p) => host.includes(p));
   if (!platformEnabled) return;
 
-  // Poll until textarea is ready
-  const poll = setInterval(() => {
+  // Poll until adapter.isReady() — textarea visible in DOM
+  pollTimer = setInterval(() => {
     if (adapter.isReady()) {
-      clearInterval(poll);
-      injectButton(adapter);
+      clearInterval(pollTimer);
+      pollTimer = null;
+      createShadowButton();
     }
   }, 500);
 
-  // Watch for DOM changes (SPA navigation rebuilds)
-  const observer = new MutationObserver(() => {
-    if (adapter.isReady() && !document.getElementById(BTN_ID)) {
-      injectButton(adapter);
+  // MutationObserver: re-inject if shadow host disappears (SPA rebuild)
+  // childList+subtree only — uBlock minimal observer config
+  observer = new MutationObserver(() => {
+    if (adapter.isReady() && !document.querySelector(HOST_TAG)) {
+      createShadowButton();
     }
   });
   observer.observe(document.body, { childList: true, subtree: true });
+  cleanupFns.push(() => observer.disconnect());
 }
 
-// Re-init on SPA navigation
-const _push = history.pushState.bind(history);
+// ── SPA navigation (History API patch) ───────────────────────────────────────
+
+const _push    = history.pushState.bind(history);
 const _replace = history.replaceState.bind(history);
-history.pushState = (...args) => { _push(...args); setTimeout(init, 800); };
+history.pushState    = (...args) => { _push(...args);    setTimeout(init, 800); };
 history.replaceState = (...args) => { _replace(...args); setTimeout(init, 800); };
 window.addEventListener('popstate', () => setTimeout(init, 800));
 
-// Live settings updates
+// ── Live settings updates ─────────────────────────────────────────────────────
+
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.settings) {
     currentSettings = { ...currentSettings, ...(changes.settings.newValue || {}) };
-    if (!currentSettings.enabled) removeButton();
+    if (!currentSettings.enabled) destroyShadowButton();
+    else if (!document.querySelector(HOST_TAG)) init();
   }
 });
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
