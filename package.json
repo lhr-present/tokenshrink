@@ -1,0 +1,12 @@
+{
+  "name": "tokenshrink",
+  "version": "0.1.0",
+  "description": "Browser extension that compresses prompts to minimum tokens before sending",
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "icons": "python3 scripts/gen_icons.py"
+  },
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["browser-extension", "claude", "tokens", "compression", "prompt-engineering"]
+}

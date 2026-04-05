@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TokenShrink — Options</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>TokenShrink <span class="version">v0.1.0</span></h1>
+      <p class="subtitle">Configuration &amp; Statistics</p>
+    </header>
+
+    <!-- SECTION 1: API KEY -->
+    <section>
+      <h2>API Key</h2>
+      <div class="field-group">
+        <label for="apiKey">Anthropic API Key</label>
+        <div class="input-row">
+          <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+          <button id="showHideKey" class="btn-icon" title="Show/hide key">👁</button>
+          <button id="testConnection" class="btn-secondary">Test</button>
+        </div>
+        <div id="testResult" class="test-result"></div>
+        <p class="field-note">Stored locally in chrome.storage.local only. Transmitted exclusively to api.anthropic.com — never to any other server.</p>
+      </div>
+    </section>
+
+    <!-- SECTION 2: BEHAVIOR -->
+    <section>
+      <h2>Behavior</h2>
+      <div class="toggle-row">
+        <div>
+          <strong>Auto-compress on send</strong>
+          <small>Intercept every message and compress before sending</small>
+        </div>
+        <label class="toggle-wrap"><input type="checkbox" id="masterEnabled"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <strong>Show compression indicator</strong>
+          <small>Display "compressing..." overlay while processing</small>
+        </div>
+        <label class="toggle-wrap"><input type="checkbox" id="showIndicator"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <strong>Show savings toast</strong>
+          <small>3-second notification after each compression</small>
+        </div>
+        <label class="toggle-wrap"><input type="checkbox" id="showToast"><span class="toggle-slider"></span></label>
+      </div>
+
+      <div class="field-group" style="margin-top:16px">
+        <label>Aggressiveness</label>
+        <div class="mode-pills">
+          <button class="pill" data-mode="balanced">Balanced<br><small>~35% reduction</small></button>
+          <button class="pill" data-mode="extreme">Extreme<br><small>~60% reduction</small></button>
+          <button class="pill" data-mode="technical">Technical<br><small>code-aware</small></button>
+        </div>
+        <div class="preview-wrap">
+          <label for="previewInput">Live preview</label>
+          <textarea id="previewInput" placeholder="Type a prompt here to see token estimate..." rows="3"></textarea>
+          <div class="preview-stats" id="previewStats"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: PLATFORMS -->
+    <section>
+      <h2>Platforms</h2>
+      <div class="platform-list">
+        <label class="platform-row">
+          <input type="checkbox" id="platform-claude" checked>
+          <span>claude.ai</span>
+          <span class="badge active">Active</span>
+        </label>
+        <label class="platform-row disabled">
+          <input type="checkbox" disabled>
+          <span>chatgpt.com</span>
+          <span class="badge soon">Coming soon</span>
+        </label>
+        <label class="platform-row disabled">
+          <input type="checkbox" disabled>
+          <span>gemini.google.com</span>
+          <span class="badge soon">Coming soon</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- SECTION 4: STATS -->
+    <section>
+      <h2>Statistics</h2>
+      <div class="stats-grid">
+        <div class="stat-box"><span id="statTotal">0</span><small>tokens saved (all-time)</small></div>
+        <div class="stat-box"><span id="statCount">0</span><small>compressions</small></div>
+        <div class="stat-box"><span id="statAvg">0%</span><small>avg reduction</small></div>
+      </div>
+      <div class="btn-row" style="margin-top:12px">
+        <button id="resetStats" class="btn-danger">Reset Stats</button>
+        <button id="exportStats" class="btn-secondary">Export JSON</button>
+      </div>
+    </section>
+
+    <!-- SECTION 5: ADVANCED -->
+    <section>
+      <h2>Advanced</h2>
+      <div class="field-group">
+        <label for="customPrompt">Custom system prompt <small>(overrides built-in when filled)</small></label>
+        <textarea id="customPrompt" rows="5" placeholder="Leave empty to use built-in compression prompts..."></textarea>
+      </div>
+      <div class="field-group">
+        <label for="modelSelect">Compression model</label>
+        <select id="modelSelect">
+          <option value="claude-haiku-4-5-20251001">Haiku 4.5 (default — fastest, cheapest)</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6 (slower, higher quality)</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label for="timeoutSlider">Request timeout: <span id="timeoutVal">8s</span></label>
+        <input type="range" id="timeoutSlider" min="3000" max="15000" step="1000" value="8000">
+        <div class="range-labels"><span>3s</span><span>5s</span><span>8s</span><span>15s</span></div>
+      </div>
+    </section>
+
+    <div class="save-bar">
+      <button id="saveBtn" class="btn-primary">Save Settings</button>
+      <span id="saveStatus" class="save-status"></span>
+    </div>
+  </div>
+  <script src="options.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TokenShrink</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+
+    <!-- HEADER -->
+    <header>
+      <div class="header-left">
+        <span class="logo">TokenShrink</span>
+        <span class="version">v0.1.0</span>
+      </div>
+      <div class="header-right">
+        <label class="toggle-wrap" title="Enable/Disable">
+          <input type="checkbox" id="masterToggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </header>
+
+    <!-- LIVE STATS -->
+    <section class="stats-panel" id="statsPanel">
+      <div class="stat-primary">
+        <span class="stat-value" id="sessionSaved">0</span>
+        <span class="stat-label">tokens saved this session</span>
+      </div>
+      <div class="stat-row">
+        <div class="stat-mini">
+          <span id="compressionCount">0</span>
+          <small>compressions</small>
+        </div>
+        <div class="stat-mini">
+          <span id="avgPct">0%</span>
+          <small>avg reduction</small>
+        </div>
+        <div class="stat-mini">
+          <span id="allTimeSaved">0</span>
+          <small>all-time</small>
+        </div>
+      </div>
+      <!-- Compression ratio bar -->
+      <div class="bar-wrap" id="barWrap" style="display:none">
+        <div class="bar-label">
+          <span id="barOrig">0</span> → <span id="barComp">0</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" id="barFill" style="width:0%"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODE SELECTOR -->
+    <section class="mode-section">
+      <div class="section-label">COMPRESSION MODE</div>
+      <div class="mode-pills">
+        <button class="pill" data-mode="balanced">Balanced</button>
+        <button class="pill" data-mode="extreme">Extreme</button>
+        <button class="pill" data-mode="technical">Technical</button>
+      </div>
+    </section>
+
+    <!-- PLATFORM STATUS -->
+    <section class="platform-section">
+      <div class="section-label">PLATFORMS</div>
+      <div class="platform-list" id="platformList">
+        <div class="platform-item" id="platform-claude">
+          <span class="dot dot-grey"></span>
+          <span class="platform-name">claude.ai</span>
+          <span class="platform-status">checking...</span>
+        </div>
+        <div class="platform-item">
+          <span class="dot dot-grey"></span>
+          <span class="platform-name">chatgpt.com</span>
+          <span class="platform-status coming-soon">coming soon</span>
+        </div>
+        <div class="platform-item">
+          <span class="dot dot-grey"></span>
+          <span class="platform-name">gemini.google.com</span>
+          <span class="platform-status coming-soon">coming soon</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+      <a href="#" id="optionsLink">Options</a>
+      <a href="https://github.com/hlnxs/tokenshrink" target="_blank" id="githubLink">GitHub</a>
+    </footer>
+
+  </div>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
