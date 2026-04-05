@@ -10,7 +10,7 @@
  * Never throws — always degrades gracefully to original text on failure.
  */
 
-import { COMPRESSION_PROMPTS } from '../config/systemPrompts.js';
+import { getSystemPrompt } from '../config/systemPrompts.js';
 import { estimateSavings } from './tokenCounter.js';
 import { localCompress } from './localCompressor.js';
 import { getCached, setCached } from './compressionCache.js';
@@ -22,8 +22,8 @@ const GROQ_MODEL = 'llama-3.1-8b-instant';
 
 // ─── Layer 3: Anthropic Haiku ─────────────────────────────────────────────────
 
-async function callAnthropic(text, { apiKey, mode, timeoutMs }) {
-  const systemPrompt = COMPRESSION_PROMPTS[mode] || COMPRESSION_PROMPTS.balanced;
+async function callAnthropic(text, { apiKey, mode, domain, timeoutMs }) {
+  const systemPrompt = getSystemPrompt(mode, domain);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -62,8 +62,8 @@ async function callAnthropic(text, { apiKey, mode, timeoutMs }) {
 
 // ─── Layer 2: Groq free tier ──────────────────────────────────────────────────
 
-async function callGroq(text, { groqApiKey, mode, timeoutMs }) {
-  const systemPrompt = COMPRESSION_PROMPTS[mode] || COMPRESSION_PROMPTS.balanced;
+async function callGroq(text, { groqApiKey, mode, domain, timeoutMs }) {
+  const systemPrompt = getSystemPrompt(mode, domain);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
 
@@ -131,13 +131,14 @@ export async function compress(text, {
   apiKey = '',
   groqApiKey = '',
   mode = 'balanced',
+  domain,
   backend = 'auto',
   timeoutMs = 8000,
   localThreshold = 20,
   cacheEnabled = true,
 } = {}) {
   if (!text || text.trim().length === 0) {
-    return { compressed: text, stats: null, source: 'none' };
+    return { compressed: text, stats: null, source: 'none', domain: 'general' };
   }
 
   // Cache check
@@ -150,13 +151,14 @@ export async function compress(text, {
     } catch (_) { /* storage unavailable in some contexts */ }
   }
 
-  // Layer 1: Local rules (always runs first)
+  // Layer 1: Local rules (always runs first — also detects domain)
   const localResult = localCompress(text);
   const localPct = localResult.stats?.pct || 0;
+  const resolvedDomain = domain || localResult.domain || 'general';
 
   // If local gives enough reduction, or backend is 'local', stop here
   if (backend === 'local' || (backend !== 'anthropic' && backend !== 'groq' && localPct >= localThreshold)) {
-    const result = { compressed: localResult.compressed, stats: localResult.stats, source: 'local' };
+    const result = { compressed: localResult.compressed, stats: localResult.stats, source: 'local', domain: resolvedDomain };
     if (cacheEnabled) setCached(text, mode, result).catch(() => {});
     return result;
   }
@@ -166,22 +168,21 @@ export async function compress(text, {
 
   // Layer 2: Groq
   if ((backend === 'groq' || backend === 'auto') && groqApiKey) {
-    const groqResult = await callGroq(apiInput, { groqApiKey, mode, timeoutMs });
+    const groqResult = await callGroq(apiInput, { groqApiKey, mode, domain: resolvedDomain, timeoutMs });
     if (!groqResult.error && isBetter(text, groqResult.compressed)) {
       const stats = estimateSavings(text, groqResult.compressed);
-      const result = { compressed: groqResult.compressed, stats, source: 'groq' };
+      const result = { compressed: groqResult.compressed, stats, source: 'groq', domain: resolvedDomain };
       if (cacheEnabled) setCached(text, mode, result).catch(() => {});
       return result;
     }
-    // Groq failed — fall through
   }
 
   // Layer 3: Anthropic Haiku
   if ((backend === 'anthropic' || backend === 'auto') && apiKey) {
-    const anthropicResult = await callAnthropic(apiInput, { apiKey, mode, timeoutMs });
+    const anthropicResult = await callAnthropic(apiInput, { apiKey, mode, domain: resolvedDomain, timeoutMs });
     if (!anthropicResult.error && isBetter(text, anthropicResult.compressed)) {
       const stats = estimateSavings(text, anthropicResult.compressed);
-      const result = { compressed: anthropicResult.compressed, stats, source: 'anthropic' };
+      const result = { compressed: anthropicResult.compressed, stats, source: 'anthropic', domain: resolvedDomain };
       if (cacheEnabled) setCached(text, mode, result).catch(() => {});
       return result;
     }
@@ -190,8 +191,8 @@ export async function compress(text, {
   // Fallback: return local result (always safe)
   if (localResult.compressed && localResult.compressed !== text) {
     if (cacheEnabled) setCached(text, mode, { compressed: localResult.compressed, stats: localResult.stats }).catch(() => {});
-    return { compressed: localResult.compressed, stats: localResult.stats, source: 'local' };
+    return { compressed: localResult.compressed, stats: localResult.stats, source: 'local', domain: resolvedDomain };
   }
 
-  return { compressed: text, stats: estimateSavings(text, text), source: 'none' };
+  return { compressed: text, stats: estimateSavings(text, text), source: 'none', domain: resolvedDomain };
 }

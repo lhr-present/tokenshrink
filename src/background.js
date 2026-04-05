@@ -5,6 +5,10 @@
  */
 
 import { compress } from './core/compressor.js';
+import { RequestQueue } from './core/requestQueue.js';
+import { getCacheStats } from './core/compressionCache.js';
+
+const queue = new RequestQueue({ concurrency: 1, debounceMs: 80 });
 
 const BADGE_COLOR = '#00ff8c';
 
@@ -32,21 +36,33 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ success: false, error: 'No Anthropic API key. Set it in extension options.' });
           return;
         }
-        const result = await compress(message.text, {
-          apiKey: settings.apiKey || '',
-          groqApiKey: settings.groqApiKey || '',
-          mode: message.mode || settings.aggressiveness,
-          backend: settings.backend || 'auto',
-          timeoutMs: settings.timeoutMs || 8000,
-          localThreshold: settings.localThreshold ?? 20,
-          cacheEnabled: settings.cacheEnabled !== false,
-        });
+        const taskKey = `compress:${message.text.slice(0, 40)}`;
+        let result;
+        try {
+          result = await queue.enqueue(taskKey, () => compress(message.text, {
+            apiKey: settings.apiKey || '',
+            groqApiKey: settings.groqApiKey || '',
+            mode: message.mode || settings.aggressiveness,
+            backend: settings.backend || 'auto',
+            timeoutMs: settings.timeoutMs || 8000,
+            localThreshold: settings.localThreshold ?? 20,
+            cacheEnabled: settings.cacheEnabled !== false,
+          }));
+        } catch (err) {
+          if (err.message === 'debounced' || err.message === 'cleared') {
+            sendResponse({ success: false, error: 'debounced', compressed: message.text });
+            return;
+          }
+          sendResponse({ success: false, error: err.message, compressed: message.text });
+          return;
+        }
         // Save last compression event for popup live badge
         if (result.source && result.source !== 'none') {
           chrome.storage.local.set({
             lastCompression: {
               source: result.source,
               stats: result.stats,
+              domain: result.domain,
               savedPct: result.stats ? result.stats.pct : 0,
               ts: Date.now(),
             },
@@ -57,6 +73,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           compressed: result.compressed,
           stats: result.stats,
           source: result.source,
+          domain: result.domain,
           error: result.error,
         });
         break;
@@ -64,7 +81,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
       case 'GET_STATS': {
         const stats = await getStoredStats();
-        sendResponse(stats);
+        try {
+          const cs = await getCacheStats();
+          sendResponse({ ...stats, cacheEntries: cs.count });
+        } catch (_) {
+          sendResponse(stats);
+        }
+        break;
+      }
+
+      case 'GET_QUEUE_STATUS': {
+        sendResponse({ pending: queue.pendingCount, running: queue.isRunning });
         break;
       }
 

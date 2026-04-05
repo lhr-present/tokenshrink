@@ -76,6 +76,8 @@ function renderStats(stats) {
     ? Math.round((stats.totalSaved / stats.totalOriginalTokens) * 100)
     : 0;
   document.getElementById('statAvg').textContent = `${avg}%`;
+  const cacheEl = document.getElementById('cacheEntries');
+  if (cacheEl) cacheEl.textContent = stats.cacheEntries ?? '—';
 }
 
 function collectSettings() {

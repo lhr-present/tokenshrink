@@ -6,6 +6,7 @@
 let sessionSaved = 0;
 let sessionCount = 0;
 let sessionOrigTotal = 0;
+let sessionBreakdown = { local: 0, groq: 0, anthropic: 0, cache: 0 };
 
 function formatNum(n) {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
@@ -62,6 +63,51 @@ async function render() {
     status.style.color = '#888';
   }
 }
+
+function updateBreakdown(lc) {
+  const src = lc?.source || 'local';
+  if (Object.prototype.hasOwnProperty.call(sessionBreakdown, src)) {
+    sessionBreakdown[src]++;
+  }
+  const total = Object.values(sessionBreakdown).reduce((a, b) => a + b, 0);
+  if (total === 0) return;
+
+  const section = document.getElementById('breakdownSection');
+  if (section) section.style.display = 'block';
+
+  ['local', 'groq', 'anthropic', 'cache'].forEach((s) => {
+    const pct = total > 0 ? (sessionBreakdown[s] / total) * 100 : 0;
+    const bar = document.getElementById(`bar-${s}`);
+    const cnt = document.getElementById(`count-${s}`);
+    if (bar) bar.style.width = `${pct}%`;
+    if (cnt) cnt.textContent = sessionBreakdown[s];
+  });
+
+  if (sessionBreakdown.cache > 0) {
+    const hitRate = Math.round((sessionBreakdown.cache / total) * 100);
+    const row = document.getElementById('cacheHitRow');
+    const pctEl = document.getElementById('cacheHitPct');
+    if (row) row.style.display = 'flex';
+    if (pctEl) pctEl.textContent = `${hitRate}%`;
+  }
+
+  if (lc?.domain) {
+    const row = document.getElementById('domainRow');
+    const badge = document.getElementById('lastDomain');
+    if (row) row.style.display = 'flex';
+    if (badge) badge.textContent = lc.domain;
+  }
+}
+
+// Breakdown toggle
+document.getElementById('breakdownToggle')?.addEventListener('click', () => {
+  const body = document.getElementById('breakdownBody');
+  const arrow = document.getElementById('breakdownArrow');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (arrow) arrow.textContent = isOpen ? '▸' : '▾';
+});
 
 // Event: toggle
 document.getElementById('masterToggle').addEventListener('change', async (e) => {
@@ -124,6 +170,7 @@ chrome.storage.onChanged.addListener((changes) => {
       }
       row.style.display = 'flex';
     }
+    updateBreakdown(lc);
   }
 });
 

@@ -86,6 +86,45 @@ header {
 .source-badge.cache     { background: rgba(180,180,180,0.08); color: #888; border-color: #333; }
 .source-time { color: #333; font-size: 9px; }
 
+/* Breakdown section */
+.breakdown-section { border-bottom: 1px solid var(--border); }
+.breakdown-toggle {
+  padding: 8px 16px;
+  font-size: 9px; color: #444; letter-spacing: 0.12em; text-transform: uppercase;
+  cursor: pointer; display: flex; align-items: center; gap: 6px;
+  transition: color 0.15s; user-select: none;
+}
+.breakdown-toggle:hover { color: #666; }
+#breakdownBody { padding: 0 16px 10px; }
+.backend-breakdown { display: flex; flex-direction: column; gap: 6px; }
+.bd-row { display: flex; align-items: center; gap: 8px; }
+.bd-label { font-size: 9px; color: #444; width: 46px; letter-spacing: 0.08em; flex-shrink: 0; }
+.bd-bar-wrap { flex: 1; height: 3px; background: #1a1a1a; border-radius: 2px; overflow: hidden; }
+.bd-bar { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+.bd-bar.local     { background: #00c864; }
+.bd-bar.groq      { background: #50a0ff; }
+.bd-bar.anthropic { background: #ffb400; }
+.bd-bar.cache     { background: #555; }
+.bd-count { font-size: 9px; color: #333; width: 16px; text-align: right; flex-shrink: 0; }
+.cache-hit-row, .domain-row {
+  font-size: 9px; color: #444; margin-top: 7px; padding-top: 7px;
+  border-top: 1px solid #151515; display: flex; align-items: center; gap: 6px;
+}
+.domain-badge {
+  padding: 1px 6px; border-radius: 2px; font-size: 8px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  background: rgba(255,255,255,0.04); border: 1px solid #222; color: #555;
+}
+/* Shortcut hint */
+.shortcut-hint {
+  font-size: 9px; color: #222; text-align: center;
+  padding: 8px 16px 10px; letter-spacing: 0.05em;
+}
+.kbd {
+  background: #151515; border: 1px solid #252525; border-radius: 2px;
+  padding: 1px 4px; font-size: 8px; color: #333;
+}
+
 /* MODE */
 .mode-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .section-label { font-size: 9px; color: var(--text-dim); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px; }

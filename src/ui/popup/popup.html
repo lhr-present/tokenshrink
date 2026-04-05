@@ -60,6 +60,43 @@
       </div>
     </section>
 
+    <!-- BACKEND BREAKDOWN — collapsible, shown after first compression -->
+    <section class="breakdown-section" id="breakdownSection" style="display:none">
+      <div class="breakdown-toggle" id="breakdownToggle">
+        <span id="breakdownArrow">▸</span> SESSION BREAKDOWN
+      </div>
+      <div id="breakdownBody" style="display:none; padding-top:8px">
+        <div class="backend-breakdown">
+          <div class="bd-row">
+            <span class="bd-label">LOCAL</span>
+            <div class="bd-bar-wrap"><div class="bd-bar local" id="bar-local" style="width:0%"></div></div>
+            <span class="bd-count" id="count-local">0</span>
+          </div>
+          <div class="bd-row">
+            <span class="bd-label">GROQ</span>
+            <div class="bd-bar-wrap"><div class="bd-bar groq" id="bar-groq" style="width:0%"></div></div>
+            <span class="bd-count" id="count-groq">0</span>
+          </div>
+          <div class="bd-row">
+            <span class="bd-label">HAIKU</span>
+            <div class="bd-bar-wrap"><div class="bd-bar anthropic" id="bar-anthropic" style="width:0%"></div></div>
+            <span class="bd-count" id="count-anthropic">0</span>
+          </div>
+          <div class="bd-row">
+            <span class="bd-label">CACHE</span>
+            <div class="bd-bar-wrap"><div class="bd-bar cache" id="bar-cache" style="width:0%"></div></div>
+            <span class="bd-count" id="count-cache">0</span>
+          </div>
+        </div>
+        <div id="cacheHitRow" style="display:none" class="cache-hit-row">
+          Cache hit rate: <span id="cacheHitPct">—</span>
+        </div>
+        <div id="domainRow" style="display:none" class="domain-row">
+          Last domain: <span id="lastDomain" class="domain-badge">—</span>
+        </div>
+      </div>
+    </section>
+
     <!-- MODE SELECTOR -->
     <section class="mode-section">
       <div class="section-label">COMPRESSION MODE</div>
@@ -99,6 +136,7 @@
     </footer>
 
   </div>
+  <div class="shortcut-hint">Auto-compresses on send · <span class="kbd">Ctrl+Z</span> to undo</div>
   <script src="popup.js" type="module"></script>
 </body>
 </html>

@@ -114,3 +114,20 @@ export async function clearCache() {
   const keys = [INDEX_KEY, ...index.map((k) => CACHE_PREFIX + k)];
   return new Promise((resolve) => chrome.storage.local.remove(keys, resolve));
 }
+
+/**
+ * Return lightweight stats about the current cache state.
+ * @returns {Promise<{ count: number, newestTs: number }>}
+ */
+export async function getCacheStats() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(null, (items) => {
+      const keys = Object.keys(items || {}).filter((k) => k.startsWith(CACHE_PREFIX));
+      const entries = keys.map((k) => items[k]).filter(Boolean);
+      resolve({
+        count: keys.length,
+        newestTs: entries.length > 0 ? Math.max(...entries.map((e) => e.ts || 0)) : 0,
+      });
+    });
+  });
+}
