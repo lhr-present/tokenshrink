@@ -8,5 +8,14 @@
   },
   "type": "module",
   "license": "MIT",
-  "keywords": ["browser-extension", "claude", "tokens", "compression", "prompt-engineering"]
+  "keywords": [
+    "browser-extension",
+    "claude",
+    "tokens",
+    "compression",
+    "prompt-engineering"
+  ],
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
 }

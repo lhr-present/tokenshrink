@@ -1,26 +1,67 @@
 #!/bin/bash
 set -e
-
 cd "$(dirname "$0")/.."
-
 VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.1.0")
-
 echo "Building TokenShrink v$VERSION..."
 
-mkdir -p dist/chrome dist/firefox releases
+# Clean
+rm -rf dist/chrome dist/firefox
+mkdir -p dist/chrome/src/ui/popup dist/chrome/src/ui/options dist/chrome/icons
 
-# Chrome build
-rm -rf dist/chrome/*
-cp -r src icons manifest.json dist/chrome/
-cd dist/chrome && zip -r ../../releases/tokenshrink-chrome-v${VERSION}.zip . -x "*.DS_Store" && cd ../..
-echo "  ✓ Chrome: releases/tokenshrink-chrome-v${VERSION}.zip ($(du -sh releases/tokenshrink-chrome-v${VERSION}.zip | cut -f1))"
+# Bundle content script (resolves all imports into one IIFE — required for Chrome MV3 content scripts)
+npx esbuild src/content.js \
+  --bundle \
+  --outfile=dist/chrome/content.js \
+  --format=iife \
+  --target=chrome100 \
+  --log-level=warning
 
-# Firefox build
-rm -rf dist/firefox/*
-cp -r src icons dist/firefox/
-cp firefox_manifest.json dist/firefox/manifest.json
-cd dist/firefox && zip -r ../../releases/tokenshrink-firefox-v${VERSION}.zip . -x "*.DS_Store" && cd ../..
-echo "  ✓ Firefox: releases/tokenshrink-firefox-v${VERSION}.zip ($(du -sh releases/tokenshrink-firefox-v${VERSION}.zip | cut -f1))"
+# Bundle background service worker (ESM format — MV3 service workers support ESM)
+npx esbuild src/background.js \
+  --bundle \
+  --outfile=dist/chrome/background.js \
+  --format=esm \
+  --target=chrome100 \
+  --log-level=warning
+
+# Bundle popup and options JS
+npx esbuild src/ui/popup/popup.js \
+  --bundle \
+  --outfile=dist/chrome/src/ui/popup/popup.js \
+  --format=iife \
+  --target=chrome100 \
+  --log-level=warning
+
+npx esbuild src/ui/options/options.js \
+  --bundle \
+  --outfile=dist/chrome/src/ui/options/options.js \
+  --format=iife \
+  --target=chrome100 \
+  --log-level=warning
+
+# Copy static assets — patch manifest paths for bundled layout
+sed \
+  -e 's|"src/background.js"|"background.js"|' \
+  -e 's|"src/content.js"|"content.js"|' \
+  -e 's|"src/ui/popup/popup.html"|"src/ui/popup/popup.html"|' \
+  -e 's|"src/ui/options/options.html"|"src/ui/options/options.html"|' \
+  manifest.json > dist/chrome/manifest.json
+cp -r icons/* dist/chrome/icons/
+cp src/ui/popup/popup.html src/ui/popup/popup.css dist/chrome/src/ui/popup/
+cp src/ui/options/options.html src/ui/options/options.css dist/chrome/src/ui/options/
+
+# Firefox build (same bundles, different manifest)
+cp -r dist/chrome dist/firefox
+sed \
+  -e 's|"src/background.js"|"background.js"|' \
+  -e 's|"src/content.js"|"content.js"|' \
+  firefox_manifest.json > dist/firefox/manifest.json
+
+# ZIP releases
+mkdir -p releases
+cd dist/chrome && zip -r ../../releases/tokenshrink-chrome-v$VERSION.zip . -x "*.DS_Store" && cd ../..
+cd dist/firefox && zip -r ../../releases/tokenshrink-firefox-v$VERSION.zip . -x "*.DS_Store" && cd ../..
 
 echo ""
 echo "Build complete: TokenShrink v$VERSION (Chrome + Firefox)"
+ls -lh releases/
