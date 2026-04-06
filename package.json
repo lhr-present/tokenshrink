@@ -1,6 +1,6 @@
 {
   "name": "@hlnx4/token-shrink",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Compress LLM prompts to minimum tokens. Zero API calls. 30-60% token savings on every message.",
   "type": "module",
   "bin": {
