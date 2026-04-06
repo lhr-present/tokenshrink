@@ -193,5 +193,3 @@ If TokenShrink saves you money, consider:
 Join the waitlist: open an issue with title `[Pro waitlist]`.
 
 ---
-
-MIT License
