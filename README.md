@@ -180,6 +180,14 @@ If TokenShrink saves you money, consider:
 - ⭐ Star this repo
 - [Sponsor on GitHub](https://github.com/sponsors/lhr-present)
 - Share with your team
+- Send crypto (every bit helps keep this free)
+
+**Crypto donations:**
+
+| Network | Address |
+|---|---|
+| Solana (SOL) | `H45tgS8vBmDzwNLAjRv9XQUESbU6GzwW8zx7eXxU5ysf` |
+| Ethereum (ETH) | `0xC9bDb4a80d2e0c5b8205230bF0B37e66E71f5cE0` |
 
 **TokenShrink Pro** (coming soon) — VS Code extension + team dashboard + unlimited Groq LLM compression.
 Join the waitlist: open an issue with title `[Pro waitlist]`.
