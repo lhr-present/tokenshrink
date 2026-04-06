@@ -1,5 +1,5 @@
 {
-  "name": "tokenshrink",
+  "name": "@hlnx4/token-shrink",
   "version": "1.0.0",
   "description": "Compress LLM prompts to minimum tokens. Zero API calls. 30-60% token savings on every message.",
   "type": "module",
@@ -8,7 +8,8 @@
   },
   "files": [
     "bin/tokenshrink.js",
-    "mcp/",
+    "mcp/server.js",
+    "mcp/package.json",
     "install.sh",
     "README.md"
   ],
