@@ -47,6 +47,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             timeoutMs: settings.timeoutMs || 8000,
             localThreshold: settings.localThreshold ?? 20,
             cacheEnabled: settings.cacheEnabled !== false,
+            model: settings.model || '',
+            customSystemPrompt: settings.customSystemPrompt || '',
           }));
         } catch (err) {
           if (err.message === 'debounced' || err.message === 'cleared') {
@@ -131,6 +133,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           backend: testBackend,
           timeoutMs: 10000,
           cacheEnabled: false,
+          localThreshold: 100,  // force API — skip local shortcut
         });
         const latencyMs = Date.now() - start;
         sendResponse({ ok: result.source !== 'none', latencyMs, source: result.source, error: result.error });

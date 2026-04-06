@@ -9,7 +9,9 @@
     "https://api.anthropic.com/*",
     "https://api.groq.com/*",
     "https://chatgpt.com/*",
-    "https://chat.openai.com/*"
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*",
+    "https://www.perplexity.ai/*"
   ],
   "background": {
     "service_worker": "src/background.js",
@@ -17,7 +19,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://claude.ai/*", "https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "matches": ["https://claude.ai/*", "https://chatgpt.com/*", "https://chat.openai.com/*", "https://gemini.google.com/*", "https://www.perplexity.ai/*"],
       "js": ["src/content.js"],
       "run_at": "document_idle"
     }

@@ -1,6 +1,6 @@
 {
   "name": "@hlnx4/token-shrink",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Compress LLM prompts to minimum tokens. Zero API calls. 30-60% token savings on every message.",
   "type": "module",
   "bin": {
@@ -18,11 +18,23 @@
     "start": "node mcp/server.js"
   },
   "keywords": [
-    "llm", "tokens", "compression", "prompt-engineering",
-    "claude", "openai", "anthropic", "mcp", "cost-reduction",
-    "ai", "chatgpt", "gemini", "cli"
+    "llm",
+    "tokens",
+    "compression",
+    "prompt-engineering",
+    "claude",
+    "openai",
+    "anthropic",
+    "mcp",
+    "cost-reduction",
+    "ai",
+    "chatgpt",
+    "gemini",
+    "cli"
   ],
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "license": "MIT",
   "author": {
     "name": "lhr-present",
@@ -39,7 +51,9 @@
     "url": "https://github.com/lhr-present/tokenshrink.git"
   },
   "homepage": "https://github.com/lhr-present/tokenshrink#readme",
-  "bugs": { "url": "https://github.com/lhr-present/tokenshrink/issues" },
+  "bugs": {
+    "url": "https://github.com/lhr-present/tokenshrink/issues"
+  },
   "devDependencies": {
     "esbuild": "^0.28.0"
   }

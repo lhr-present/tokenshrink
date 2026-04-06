@@ -262,16 +262,25 @@ export function detectDomain(text) {
 
 // ─── Core rule application ────────────────────────────────────────────────────
 
-function applyRules(text, isTurkish) {
+// Extreme-mode extras (pre-compiled)
+const EXTREME_POLITE_RE = /\b(please|kindly)\b\s*/gi;
+const EXTREME_HEDGE_RE  = /\b(very|quite|rather|somewhat|fairly|pretty)\b\s+/gi;
+
+function applyRules(text, isTurkish, mode = 'balanced') {
   let out = text;
   let appliedRules = 0;
 
-  // 1. Filler removal (single-pass combined regex)
+  // 1. Filler removal — all modes
   const after1 = out.replace(FILLER_RE, '');
   if (after1 !== out) appliedRules++;
   out = after1;
 
-  // 2. Hedge removal
+  // Technical mode: only filler removal — preserve all technical phrasing
+  if (mode === 'technical') {
+    return { out, appliedRules };
+  }
+
+  // 2. Hedge removal — balanced + extreme
   const after2 = out.replace(HEDGE_RE, '');
   if (after2 !== out) appliedRules++;
   out = after2;
@@ -292,6 +301,18 @@ function applyRules(text, isTurkish) {
       if (next !== out) appliedRules++;
       out = next;
     }
+  }
+
+  // 5. Extreme mode extras — strip remaining politeness + filler adverbs
+  if (mode === 'extreme') {
+    EXTREME_POLITE_RE.lastIndex = 0;
+    EXTREME_HEDGE_RE.lastIndex = 0;
+    const afterP = out.replace(EXTREME_POLITE_RE, '');
+    if (afterP !== out) appliedRules++;
+    out = afterP;
+    const afterH = out.replace(EXTREME_HEDGE_RE, '');
+    if (afterH !== out) appliedRules++;
+    out = afterH;
   }
 
   // 5. Post-removal cleanup
@@ -327,7 +348,7 @@ function applyRules(text, isTurkish) {
  * @param {{ forceDomain?: string }} [options]
  * @returns {{ compressed: string, stats: object, domain: string, appliedRules: number }}
  */
-export function localCompress(text, { forceDomain } = {}) {
+export function localCompress(text, { forceDomain, mode = 'balanced' } = {}) {
   if (!text || text.trim().length === 0) {
     const empty = { originalTokens: 0, compressedTokens: 0, saved: 0, pct: 0 };
     return { compressed: text, stats: empty, domain: 'general', appliedRules: 0 };
@@ -337,7 +358,7 @@ export function localCompress(text, { forceDomain } = {}) {
   const isTurkish = TURKISH_DETECT_RE.test(text);
 
   const { masked, regions } = maskProtected(text);
-  const { out: compressedMasked, appliedRules } = applyRules(masked, isTurkish);
+  const { out: compressedMasked, appliedRules } = applyRules(masked, isTurkish, mode);
   const compressed = unmask(compressedMasked, regions);
   const stats = estimateSavings(text, compressed);
 

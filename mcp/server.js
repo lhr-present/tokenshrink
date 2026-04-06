@@ -18,151 +18,81 @@ import { z } from 'zod';
 import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { createRequire } from 'module';
 
-// ── Inline local compressor (self-contained, zero file dependencies) ──────────
+// ── Shared compression engine (dist/core.cjs = same 100+ rules as browser ext) ─
 
-const PROTECTED_PATTERNS = [
-  /```[\s\S]*?```/g,
-  /`[^`\n]+`/g,
-  /https?:\/\/\S+/g,
-  /"(?:[^"\\]|\\.)*"/g,
-];
+const _require = createRequire(import.meta.url);
 
-function maskProtected(text) {
-  const regions = [];
-  let masked = text;
-  for (const re of PROTECTED_PATTERNS) {
-    masked = masked.replace(new RegExp(re.source, re.flags), (m) => {
-      regions.push(m);
-      return `\x00P${regions.length - 1}\x00`;
-    });
+let _engine = null;
+function getEngine() {
+  if (_engine) return _engine;
+  const corePath = new URL('../dist/core.cjs', import.meta.url).pathname;
+  try {
+    const mod = _require(corePath);
+    _engine = {
+      localCompress: (text, mode = 'balanced') => {
+        const r = mod.localCompress(text, { mode });
+        // Normalize to shape expected by tools: { compressed, origTokens, compTokens, saved, pct, domain }
+        return {
+          compressed: r.compressed,
+          origTokens: r.stats?.originalTokens ?? Math.ceil((text || '').length / 4),
+          compTokens: r.stats?.compressedTokens ?? Math.ceil((r.compressed || '').length / 4),
+          saved:      r.stats?.saved ?? 0,
+          pct:        r.stats?.pct   ?? 0,
+          domain:     r.domain       ?? 'general',
+        };
+      },
+    };
+  } catch (_) {
+    // dist/core.cjs not built yet — minimal inline fallback (install.sh always builds it)
+    _engine = {
+      localCompress: (text, mode = 'balanced') => {
+        if (!text || text.trim().length < 10) {
+          return { compressed: text, origTokens: 0, compTokens: 0, saved: 0, pct: 0, domain: 'general' };
+        }
+        const origTokens = Math.ceil(text.length / 4);
+        let out = text
+          .replace(/\bI would like to\b/gi, '')
+          .replace(/\bCould you please\b/gi, '')
+          .replace(/\bI was wondering if you could\b/gi, '')
+          .replace(/\bin order to\b/gi, 'to')
+          .replace(/\bdue to the fact that\b/gi, 'because')
+          .replace(/\bit is important to note that\b/gi, 'note:')
+          .replace(/[ \t]{2,}/g, ' ')
+          .trim();
+        if (mode === 'extreme') {
+          out = out.replace(/\b(please|kindly)\b\s*/gi, '').replace(/\b(very|quite|rather)\b\s+/gi, '');
+        }
+        const compTokens = Math.ceil(out.length / 4);
+        const saved = Math.max(0, origTokens - compTokens);
+        const pct = origTokens > 0 ? Math.round((saved / origTokens) * 100) : 0;
+        return { compressed: out, origTokens, compTokens, saved, pct, domain: 'general' };
+      },
+    };
   }
-  return { masked, regions };
+  return _engine;
 }
 
-function unmask(text, regions) {
-  return text.replace(/\x00P(\d+)\x00/g, (_, i) => regions[+i] ?? _);
-}
+// ── Accurate token estimator (matches tokenCounter.js logic) ─────────────────
 
-// Single-pass filler regex (pre-compiled at startup)
-const FILLER_LIST = [
-  'I would like to',"I'd like to",'Could you please','Can you please',
-  'I was wondering if you could','I am wondering','Would you be able to',
-  'I need you to','I want you to','Please help me to','Please help me',
-  "I'm looking for",'I am looking for','I need help with',
-  'It would be great if','It would be helpful if','Feel free to',
-  'I hope this makes sense','Let me know if','Thanks in advance',
-  'Thank you in advance','I appreciate your help','I just wanted to',
-  'I was just wondering',"I'm just trying to",'I simply want to',
-  "If you don't mind","If it's not too much trouble",
-  'I was hoping you could','I would appreciate if',
-  'Do you think you could','Would it be possible for you to',
-  'I am reaching out to','I am writing to ask',
-];
-const FILLER_RE = new RegExp(
-  `(?:^|(?<=\\s))(?:${FILLER_LIST.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\s*`,
-  'gi'
-);
-
-// Phrase replacements
-const REPLACEMENTS = [
-  [/\bin order to\b/gi, 'to'],
-  [/\bdue to the fact that\b/gi, 'because'],
-  [/\bat this point in time\b/gi, 'now'],
-  [/\bat the present time\b/gi, 'now'],
-  [/\bin the event that\b/gi, 'if'],
-  [/\bfor the purpose of\b/gi, 'for'],
-  [/\bwith regard to\b/gi, 're:'],
-  [/\bwith respect to\b/gi, 're:'],
-  [/\ba large number of\b/gi, 'many'],
-  [/\bthe majority of\b/gi, 'most'],
-  [/\bon a regular basis\b/gi, 'regularly'],
-  [/\bin close proximity to\b/gi, 'near'],
-  [/\bprior to\b/gi, 'before'],
-  [/\bsubsequent to\b/gi, 'after'],
-  [/\bin addition to\b/gi, 'plus'],
-  [/\bmake use of\b/gi, 'use'],
-  [/\btake into consideration\b/gi, 'consider'],
-  [/\bis able to\b/gi, 'can'],
-  [/\bare able to\b/gi, 'can'],
-  [/\bit is important to note that\b/gi, 'note:'],
-  [/\bit is worth noting that\b/gi, 'note:'],
-  [/\bit should be noted that\b/gi, 'note:'],
-  [/\bthe fact that\b/gi, 'that'],
-  [/\bin terms of\b/gi, 'for'],
-  [/\bon the basis of\b/gi, 'based on'],
-  [/\beach and every\b/gi, 'every'],
-  [/\bfirst and foremost\b/gi, 'first'],
-  [/\bmake a decision\b/gi, 'decide'],
-  [/\bmake an attempt\b/gi, 'try'],
-  [/\bmake an effort\b/gi, 'try'],
-  [/\bgive consideration to\b/gi, 'consider'],
-  [/\btake into account\b/gi, 'account for'],
-  [/\bcome to a conclusion\b/gi, 'conclude'],
-  [/\bprovide an explanation of\b/gi, 'explain'],
-  [/\bprovide information about\b/gi, 'explain'],
-  [/\bperform an analysis of\b/gi, 'analyze'],
-  [/\bconduct a review of\b/gi, 'review'],
-  [/\bhas been\b/gi, 'has'],
-  [/\bhave been\b/gi, 'have'],
-  [/\bwill be able to\b/gi, 'can'],
-];
-
-function detectDomain(text) {
-  const codeSignals = (text.match(/```|`[^`]+`|function\s*\(|=>\s*{|import\s+|class\s+\w/g) || []).length;
-  if (codeSignals >= 2) return 'code';
-  const academicSignals = (text.match(/\b(hypothesis|methodology|framework|empirical|paradigm|literature)\b/gi) || []).length;
-  if (academicSignals >= 2) return 'academic';
-  const chatSignals = (text.match(/\b(please|could you|would you|help me|I need)\b/gi) || []).length;
-  if (chatSignals >= 3) return 'chat';
-  return 'general';
-}
-
-function localCompress(text, mode = 'balanced') {
-  if (!text || text.trim().length < 10) {
-    return { compressed: text, origTokens: 0, compTokens: 0, saved: 0, pct: 0, domain: 'general', source: 'local' };
+function estimateTokens(text) {
+  if (!text) return 0;
+  let remaining = text;
+  let tokens = 0;
+  const codeBlocks = text.match(/```[\s\S]*?```|`[^`\n]+`/g) || [];
+  for (const block of codeBlocks) {
+    tokens += Math.ceil(block.length / 3);
+    remaining = remaining.replace(block, '');
   }
-
-  const origTokens = Math.ceil(text.length / 4);
-  const domain = detectDomain(text);
-  const { masked, regions } = maskProtected(text);
-  let out = masked;
-
-  // Filler removal
-  out = out.replace(FILLER_RE, ' ');
-
-  // Phrase replacements
-  for (const [re, rep] of REPLACEMENTS) out = out.replace(re, rep);
-
-  // Extreme mode extras
-  if (mode === 'extreme') {
-    out = out
-      .replace(/\b(please|kindly)\b\s*/gi, '')
-      .replace(/\b(very|quite|rather|somewhat|fairly|pretty)\b\s+/gi, '');
-  }
-
-  // Technical mode: preserve code, light rules only
-  if (mode === 'technical') {
-    out = out.replace(FILLER_RE, ' ');
-  }
-
-  // Cleanup
-  out = out
-    .replace(/\b(\w[\w]*:?)\s+\1(?=\s|$)/gi, '$1')  // dedup
-    .replace(/^(and |but |or |so |me to |to (?=\w))+/i, '')
-    .replace(/^([a-z])/, c => c.toUpperCase())
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/ +([,.;:!?])/g, '$1')
-    .trim();
-
-  out = unmask(out, regions);
-
-  const compTokens = Math.ceil(out.length / 4);
-  const saved = Math.max(0, origTokens - compTokens);
-  const pct = origTokens > 0 ? Math.round((saved / origTokens) * 100) : 0;
-
-  return { compressed: out, origTokens, compTokens, saved, pct, domain, source: 'local' };
+  const cjk = remaining.match(/[\u3000-\u9fff\uf900-\ufaff\u3040-\u30ff]/g) || [];
+  tokens += Math.ceil(cjk.length / 1.5);
+  remaining = remaining.replace(/[\u3000-\u9fff\uf900-\ufaff\u3040-\u30ff]/g, '');
+  const nums = remaining.match(/\b\d+(?:\.\d+)?\b/g) || [];
+  for (const n of nums) tokens += Math.ceil(n.length / 6);
+  remaining = remaining.replace(/\b\d+(?:\.\d+)?\b/g, '');
+  tokens += Math.ceil(remaining.length / 4);
+  return Math.max(1, tokens);
 }
 
 // ── Groq free tier (optional, zero Anthropic cost) ────────────────────────────
@@ -249,20 +179,21 @@ server.tool(
   },
   async ({ text, mode, use_groq }) => {
     const config = loadConfig();
-    const local = localCompress(text, mode);
+    const effectiveMode = mode || config.defaultMode || 'balanced';
+    const local = getEngine().localCompress(text, effectiveMode);
     let final = local.compressed;
     let source = 'local';
 
     // Try Groq if requested and local savings are low
     if (use_groq && config.groqApiKey && local.pct < 25) {
-      const groqResult = await groqCompress(text, { groqApiKey: config.groqApiKey, mode });
+      const groqResult = await groqCompress(text, { groqApiKey: config.groqApiKey, mode: effectiveMode });
       if (groqResult && groqResult.length < text.length * 0.95) {
         final = groqResult;
         source = 'groq';
       }
     }
 
-    const compTokens = Math.ceil(final.length / 4);
+    const compTokens = estimateTokens(final);
     recordStats(local.origTokens, compTokens, source);
 
     return {
@@ -294,7 +225,9 @@ server.tool(
     mode: z.enum(['balanced', 'extreme', 'technical']).optional().default('balanced'),
   },
   async ({ text, mode }) => {
-    const result = localCompress(text, mode);
+    const config = loadConfig();
+    const effectiveMode = mode || config.defaultMode || 'balanced';
+    const result = getEngine().localCompress(text, effectiveMode);
     recordStats(result.origTokens, result.compTokens, 'local');
     return {
       content: [{ type: 'text', text: result.compressed }],
@@ -350,26 +283,101 @@ server.tool(
   }
 );
 
+// ── Tool: batch_compress ──────────────────────────────────────────────────────
+
+server.tool(
+  'batch_compress',
+  'Compress multiple prompts at once — useful for compressing a list of messages or documents.',
+  {
+    texts: z.array(z.string()).min(1).max(20).describe('Array of texts to compress (max 20)'),
+    mode: z.enum(['balanced', 'extreme', 'technical']).optional().default('balanced'),
+  },
+  async ({ texts, mode }) => {
+    const config = loadConfig();
+    const effectiveMode = mode || config.defaultMode || 'balanced';
+    const results = texts.map(text => {
+      const r = getEngine().localCompress(text, effectiveMode);
+      session.compressions++;
+      session.totalSaved += r.saved || 0;
+      session.totalOrig  += r.origTokens || 0;
+      return {
+        original:   text.slice(0, 60) + (text.length > 60 ? '...' : ''),
+        compressed: r.compressed,
+        pct:        r.pct,
+        saved:      r.saved,
+      };
+    });
+    const totalSaved = results.reduce((a, r) => a + (r.saved || 0), 0);
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({ results, totalSaved, count: texts.length }, null, 2),
+      }],
+    };
+  }
+);
+
+// ── Tool: session_report ──────────────────────────────────────────────────────
+
+server.tool(
+  'session_report',
+  'Get a detailed compression report with cost savings estimate for this session.',
+  {},
+  async () => {
+    const avgPct = session.totalOrig > 0
+      ? Math.round((session.totalSaved / session.totalOrig) * 100) : 0;
+    // Rough cost at Haiku input price ($1 / 1M tokens)
+    const costSaved = ((session.totalSaved / 1_000_000) * 1).toFixed(6);
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          session: {
+            compressions:     session.compressions,
+            originalTokens:   session.totalOrig,
+            compressedTokens: session.totalOrig - session.totalSaved,
+            tokensSaved:      session.totalSaved,
+            avgReduction:     `${avgPct}%`,
+            groqCalls:        session.groqUsed,
+            estimatedCostSaved: `$${costSaved} (at $1/M tokens)`,
+          },
+        }, null, 2),
+      }],
+    };
+  }
+);
+
 // ── Prompt: auto_compress ─────────────────────────────────────────────────────
 
 server.prompt(
   'auto_compress',
-  'Makes Claude automatically compress every verbose user message before responding — invisible to the user, saves tokens on every turn.',
+  'Makes Claude automatically compress verbose user messages before processing. Transparent to user.',
   {},
   () => ({
     messages: [{
       role: 'user',
       content: {
         type: 'text',
-        text: `You have access to TokenShrink MCP tools. Follow these rules silently on every turn:
+        text: `You have the TokenShrink compression tools available.
 
-1. If the user message is >30 words: call compress_and_use(text=<their message>, mode="balanced") first, then respond to the COMPRESSED version as if that's what they sent.
-2. If the message is ≤30 words, technical/code-only, or already minimal: respond directly without compressing.
-3. For messages with code blocks: use mode="technical" to preserve all code exactly.
-4. Never mention compression to the user — it must be completely invisible.
-5. Never compress system instructions, only user messages.
+RULES (apply silently every turn):
+1. If the user's message is >25 words AND is NOT primarily code:
+   → Call compress_and_use(text=<their message>, mode="balanced")
+   → Respond to the COMPRESSED version as if that's what they wrote
+   → Never tell the user you compressed their message
 
-This saves tokens on input + reduces context length on every turn.`,
+2. If the message is >25 words AND contains code blocks (triple backticks):
+   → Call compress_and_use(text=<their message>, mode="technical")
+   → Code blocks are preserved exactly
+
+3. If the message is ≤25 words: respond directly, no compression
+
+4. Every 10 compressions: silently call compression_stats() and append at the END of your response (small):
+   _[TokenShrink: X tokens saved this session]_
+
+5. Never compress system instructions — only user messages.
+
+This is permanent for this conversation. Begin.`,
       },
     }],
   })

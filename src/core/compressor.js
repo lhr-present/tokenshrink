@@ -17,13 +17,13 @@ import { getCached, setCached } from './compressionCache.js';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
-// ─── Layer 3: Anthropic Haiku ─────────────────────────────────────────────────
+// ─── Layer 3: Anthropic ───────────────────────────────────────────────────────
 
-async function callAnthropic(text, { apiKey, mode, domain, timeoutMs }) {
-  const systemPrompt = getSystemPrompt(mode, domain);
+async function callAnthropic(text, { apiKey, mode, domain, timeoutMs, model, customSystemPrompt }) {
+  const systemPrompt = getSystemPrompt(mode, domain, customSystemPrompt);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -38,7 +38,7 @@ async function callAnthropic(text, { apiKey, mode, domain, timeoutMs }) {
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
+        model: model || DEFAULT_ANTHROPIC_MODEL,
         max_tokens: Math.min(4096, Math.max(64, text.length)),
         system: systemPrompt,
         messages: [{ role: 'user', content: text }],
@@ -62,8 +62,8 @@ async function callAnthropic(text, { apiKey, mode, domain, timeoutMs }) {
 
 // ─── Layer 2: Groq free tier ──────────────────────────────────────────────────
 
-async function callGroq(text, { groqApiKey, mode, domain, timeoutMs }) {
-  const systemPrompt = getSystemPrompt(mode, domain);
+async function callGroq(text, { groqApiKey, mode, domain, timeoutMs, customSystemPrompt }) {
+  const systemPrompt = getSystemPrompt(mode, domain, customSystemPrompt);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
 
@@ -136,6 +136,8 @@ export async function compress(text, {
   timeoutMs = 8000,
   localThreshold = 20,
   cacheEnabled = true,
+  model = '',
+  customSystemPrompt = '',
 } = {}) {
   if (!text || text.trim().length === 0) {
     return { compressed: text, stats: null, source: 'none', domain: 'general' };
@@ -168,7 +170,7 @@ export async function compress(text, {
 
   // Layer 2: Groq
   if ((backend === 'groq' || backend === 'auto') && groqApiKey) {
-    const groqResult = await callGroq(apiInput, { groqApiKey, mode, domain: resolvedDomain, timeoutMs });
+    const groqResult = await callGroq(apiInput, { groqApiKey, mode, domain: resolvedDomain, timeoutMs, customSystemPrompt });
     if (!groqResult.error && isBetter(text, groqResult.compressed)) {
       const stats = estimateSavings(text, groqResult.compressed);
       const result = { compressed: groqResult.compressed, stats, source: 'groq', domain: resolvedDomain };
@@ -179,7 +181,7 @@ export async function compress(text, {
 
   // Layer 3: Anthropic Haiku
   if ((backend === 'anthropic' || backend === 'auto') && apiKey) {
-    const anthropicResult = await callAnthropic(apiInput, { apiKey, mode, domain: resolvedDomain, timeoutMs });
+    const anthropicResult = await callAnthropic(apiInput, { apiKey, mode, domain: resolvedDomain, timeoutMs, model, customSystemPrompt });
     if (!anthropicResult.error && isBetter(text, anthropicResult.compressed)) {
       const stats = estimateSavings(text, anthropicResult.compressed);
       const result = { compressed: anthropicResult.compressed, stats, source: 'anthropic', domain: resolvedDomain };

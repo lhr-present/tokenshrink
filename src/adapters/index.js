@@ -6,8 +6,9 @@
 import claudeAdapter from './claude.js';
 import chatgptAdapter from './chatgpt.js';
 import geminiAdapter from './gemini.js';
+import perplexityAdapter from './perplexity.js';
 
-const ADAPTERS = [claudeAdapter, chatgptAdapter, geminiAdapter];
+const ADAPTERS = [claudeAdapter, chatgptAdapter, geminiAdapter, perplexityAdapter];
 
 /**
  * Get the matching adapter for the current page.
@@ -18,5 +19,5 @@ export function getAdapter() {
   return ADAPTERS.find((a) => a.hostMatch(host)) || null;
 }
 
-export { claudeAdapter, chatgptAdapter, geminiAdapter };
+export { claudeAdapter, chatgptAdapter, geminiAdapter, perplexityAdapter };
 export default ADAPTERS;

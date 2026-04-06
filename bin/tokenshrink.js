@@ -14,7 +14,34 @@
  *           technical          — preserves all code/variable names, ~25% reduction
  */
 
-// ── Inline compressor (self-contained, zero dependencies) ────────────────────
+// ── Load canonical engine (dist/core.cjs) or fall back to inline rules ───────
+
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const _require = createRequire(import.meta.url);
+
+let _canonicalCompress = null;
+try {
+  const mod = _require(join(__dirname, '../dist/core.cjs'));
+  _canonicalCompress = (text, mode) => {
+    const r = mod.localCompress(text, { mode });
+    return {
+      compressed: r.compressed,
+      origTokens: r.stats?.originalTokens ?? Math.ceil((text || '').length / 4),
+      compTokens: r.stats?.compressedTokens ?? Math.ceil((r.compressed || '').length / 4),
+      saved: r.stats?.saved ?? 0,
+      pct:   r.stats?.pct   ?? 0,
+      domain: r.domain ?? 'general',
+    };
+  };
+} catch (_) {
+  // dist/core.cjs not present (npx use — no build step). Inline fallback below.
+}
+
+// ── Inline compressor fallback (npx / npm install -g without build) ──────────
 
 const PROTECTED_PATTERNS = [
   /```[\s\S]*?```/g,
@@ -173,6 +200,9 @@ function estimateTokens(text) {
 }
 
 function compress(text, mode = 'balanced') {
+  // Use canonical engine when available (install.sh builds dist/core.cjs)
+  if (_canonicalCompress) return _canonicalCompress(text, mode);
+
   if (!text || text.trim().length < 10) return { compressed: text, origTokens: 0, compTokens: 0, saved: 0, pct: 0, domain: 'general' };
 
   const domain = detectDomain(text);

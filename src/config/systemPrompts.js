@@ -43,7 +43,8 @@ export const COMPRESSION_PROMPTS = {
  * @param {string} [domain='general']
  * @returns {string}
  */
-export function getSystemPrompt(mode = 'balanced', domain = 'general') {
+export function getSystemPrompt(mode = 'balanced', domain = 'general', customPrompt = '') {
+  if (customPrompt && customPrompt.trim().length > 20) return customPrompt.trim();
   return (
     COMPRESSION_PROMPTS[mode]?.[domain] ??
     COMPRESSION_PROMPTS[mode]?.general ??

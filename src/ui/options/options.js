@@ -96,7 +96,12 @@ function collectSettings() {
     customSystemPrompt: document.getElementById('customPrompt').value.trim(),
     model: document.getElementById('modelSelect').value,
     timeoutMs: parseInt(document.getElementById('timeoutSlider').value, 10),
-    platforms: document.getElementById('platform-claude').checked ? ['claude.ai'] : [],
+    platforms: [
+      document.getElementById('platform-claude')?.checked     && 'claude.ai',
+      document.getElementById('platform-chatgpt')?.checked    && 'chatgpt.com',
+      document.getElementById('platform-gemini')?.checked     && 'gemini.google.com',
+      document.getElementById('platform-perplexity')?.checked && 'perplexity.ai',
+    ].filter(Boolean),
   };
 }
 

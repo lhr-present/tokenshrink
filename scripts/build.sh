@@ -4,6 +4,10 @@ cd "$(dirname "$0")/.."
 VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.1.0")
 echo "Building TokenShrink v$VERSION..."
 
+# ── Build shared core bundle first ────────────────────────────────────────────
+echo "→ Building shared core bundle..."
+bash scripts/bundle-core.sh
+
 # Clean
 rm -rf dist/chrome dist/firefox
 mkdir -p dist/chrome/src/ui/popup dist/chrome/src/ui/options dist/chrome/icons

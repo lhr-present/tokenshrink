@@ -38,6 +38,13 @@ echo "→ Installing MCP server dependencies..."
 cd "$INSTALL_DIR/mcp"
 npm install --silent --no-fund --no-audit
 
+# ── Step 2b: Build shared compression engine ──────────────────────────────────
+
+echo "→ Building shared compression engine..."
+cd "$INSTALL_DIR"
+npm install --silent --no-fund --no-audit 2>/dev/null || true
+bash scripts/bundle-core.sh
+
 # ── Step 3: Build CLI binary ──────────────────────────────────────────────────
 
 echo "→ Building CLI binary..."
@@ -76,13 +83,32 @@ console.log('  ✓ Patched: ' + cfgPath);
 
 # ── Step 5: Shell aliases ─────────────────────────────────────────────────────
 
+# Detect clipboard command (Linux xclip/xsel, macOS pbcopy)
+if command -v xclip &>/dev/null; then
+  CLIP_COPY="xclip -selection clipboard"
+  CLIP_PASTE="xclip -selection clipboard -o"
+elif command -v xsel &>/dev/null; then
+  CLIP_COPY="xsel --clipboard --input"
+  CLIP_PASTE="xsel --clipboard --output"
+elif command -v pbcopy &>/dev/null; then
+  CLIP_COPY="pbcopy"
+  CLIP_PASTE="pbpaste"
+else
+  CLIP_COPY=""
+  CLIP_PASTE=""
+fi
+
 for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
   if [ -f "$RC" ] && ! grep -q "tokenshrink" "$RC" 2>/dev/null; then
     echo "" >> "$RC"
     echo "# TokenShrink" >> "$RC"
-    echo "alias ts='$INSTALL_DIR/dist/compress'" >> "$RC"
-    echo "alias tsc='$INSTALL_DIR/dist/compress --quiet | xclip -selection clipboard 2>/dev/null || $INSTALL_DIR/dist/compress --quiet | pbcopy 2>/dev/null; echo \"✓ compressed → clipboard\"'" >> "$RC"
-    echo "alias tsclip='xclip -selection clipboard -o 2>/dev/null | $INSTALL_DIR/dist/compress --quiet | xclip -selection clipboard 2>/dev/null && echo \"✓ clipboard compressed\"'" >> "$RC"
+    echo "alias ts='$INSTALL_DIR/bin/tokenshrink.js'" >> "$RC"
+    if [ -n "$CLIP_COPY" ]; then
+      echo "alias tsc='$INSTALL_DIR/bin/tokenshrink.js --quiet | $CLIP_COPY && echo \"✓ compressed → clipboard\"'" >> "$RC"
+      echo "alias tsclip='$CLIP_PASTE | $INSTALL_DIR/bin/tokenshrink.js --quiet | $CLIP_COPY && echo \"✓ clipboard compressed\"'" >> "$RC"
+    else
+      echo "# tsc/tsclip require xclip, xsel (Linux) or pbcopy (macOS)" >> "$RC"
+    fi
     echo "  ✓ Added aliases to $RC"
   fi
 done
