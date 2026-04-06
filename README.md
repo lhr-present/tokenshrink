@@ -2,8 +2,8 @@
 
 **Cut your LLM token usage by 30–60% on every message. Zero API calls. Zero cost. Works everywhere.**
 
-[![npm version](https://img.shields.io/npm/v/tokenshrink?style=flat-square&color=00ff8c&labelColor=0a0a0a)](https://www.npmjs.com/package/tokenshrink)
-[![npm downloads](https://img.shields.io/npm/dm/tokenshrink?style=flat-square&color=00ff8c&labelColor=0a0a0a)](https://www.npmjs.com/package/tokenshrink)
+[![npm version](https://img.shields.io/npm/v/%40hlnx4%2Ftoken-shrink?style=flat-square&color=00ff8c&labelColor=0a0a0a)](https://www.npmjs.com/package/@hlnx4/token-shrink)
+[![npm downloads](https://img.shields.io/npm/dm/%40hlnx4%2Ftoken-shrink?style=flat-square&color=00ff8c&labelColor=0a0a0a)](https://www.npmjs.com/package/@hlnx4/token-shrink)
 [![license](https://img.shields.io/badge/license-MIT-00ff8c?style=flat-square&labelColor=0a0a0a)](LICENSE)
 
 ```
