@@ -1,77 +1,189 @@
 # TokenShrink
 
-![version](https://img.shields.io/badge/version-0.1.0-00ff8c?style=flat-square&labelColor=0a0a0a)
-![license](https://img.shields.io/badge/license-MIT-00ff8c?style=flat-square&labelColor=0a0a0a)
-![platforms](https://img.shields.io/badge/platforms-Chrome%20%7C%20Firefox-00ff8c?style=flat-square&labelColor=0a0a0a)
+**Cut your LLM token usage by 30–60% on every message. Zero API calls. Zero cost. Works everywhere.**
 
-Automatically compresses every prompt to its minimum-token form before sending. Saves 30–60% on every API call.
+[![npm version](https://img.shields.io/npm/v/tokenshrink?style=flat-square&color=00ff8c&labelColor=0a0a0a)](https://www.npmjs.com/package/tokenshrink)
+[![npm downloads](https://img.shields.io/npm/dm/tokenshrink?style=flat-square&color=00ff8c&labelColor=0a0a0a)](https://www.npmjs.com/package/tokenshrink)
+[![license](https://img.shields.io/badge/license-MIT-00ff8c?style=flat-square&labelColor=0a0a0a)](LICENSE)
 
-## What it does
+```
+Before: "I was wondering if you could please help me understand how transformer
+         neural networks work and why they have been so effective in the field
+         of natural language processing, if you don't mind."
+         → 47 tokens
 
-TokenShrink intercepts your message on claude.ai the moment you hit Send, rewrites it to the fewest tokens possible using Claude Haiku (fast + cheap), then silently fires the original send action — you see the compressed version go through.
+After:  "Help me understand how transformer neural networks work and why they're
+         so effective in NLP."
+         → 18 tokens
+
+Saved:  29 tokens  (62%)  — instant, local, $0.00
+```
+
+---
+
+## Why this matters
+
+Claude Opus 4 costs **$15 per million input tokens**.
+If you send 500 words per message, 100 times a day, that's ~12,500 tokens → **$0.19/day → $68/year**.
+TokenShrink cuts that in half, automatically, with no quality loss.
+
+For teams and heavy users, the savings compound fast:
+- 10 developers × 100 messages/day = **$680/year saved at zero cost**
+- API automation at scale = savings in the thousands per month
+
+---
+
+## Install
+
+### Terminal / CLI (all platforms)
+
+```bash
+npm install -g tokenshrink
+```
+
+Or one-command full install (Claude Desktop + CLI + shell aliases):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lhr-present/tokenshrink/master/install.sh | bash
+```
+
+### Claude Desktop (MCP — auto-compresses every message silently)
+
+```bash
+# After install.sh, restart Claude Desktop, then:
+# Click + → select "auto_compress" once per conversation
+# Every message >30 words compresses automatically. Invisible to the user.
+```
+
+### Claude Code CLI
+
+```bash
+claude mcp add --scope user tokenshrink -- node ~/.tokenshrink/mcp/server.js
+```
+
+---
+
+## Usage
+
+```bash
+# Compress and see stats
+tokenshrink "I was wondering if you could help me understand transformers"
+
+# Quiet mode — compressed text only (pipe-friendly)
+tokenshrink -q "I was wondering if you could help me understand transformers"
+
+# Pipe into clipboard
+echo "verbose prompt here" | tokenshrink -q | pbcopy    # Mac
+echo "verbose prompt here" | tokenshrink -q | xclip -sel clip  # Linux
+
+# Compression modes
+tokenshrink --mode balanced  "..."   # 30-50% — natural language (default)
+tokenshrink --mode extreme   "..."   # 50-70% — telegram style
+tokenshrink --mode technical "..."   # ~25%   — preserves all code/variable names
+
+# JSON stats
+tokenshrink --stats "your prompt"
+```
+
+Shell aliases (added automatically by install.sh):
+
+```bash
+alias ts='tokenshrink'
+alias tsc='tokenshrink -q | xclip -sel clip && echo "✓ compressed → clipboard"'
+```
+
+---
+
+## What it removes
+
+TokenShrink applies 100+ pre-compiled rules at under 2ms per message:
+
+| Category | Example → Compressed |
+|---|---|
+| Filler openers | "I was wondering if you could..." → removed |
+| Politeness hedges | "please", "if you don't mind" → removed |
+| Verbose phrases | "in order to" → "to", "due to the fact that" → "because" |
+| Nominalizations | "make a decision" → "decide", "make an attempt" → "try" |
+| Passive bloat | "has been completed" → "has completed" |
+| Academic filler | "it is important to note that" → "note:" |
+| Turkish support | "lütfen", "acaba", polite openers → removed |
+
+Code blocks, URLs, and quoted strings are **never touched**.
+
+---
+
+## Platforms
+
+| Platform | Method | Status |
+|---|---|---|
+| Terminal | `tokenshrink` CLI | ✓ Available now |
+| Claude Desktop | MCP auto_compress | ✓ Available now |
+| Claude Code CLI | MCP server | ✓ Available now |
+| claude.ai | Chrome/Firefox extension | 🔜 Coming soon |
+| VS Code | Extension | 🔜 Coming soon |
+| ChatGPT / Gemini | Browser extension | 🔜 Coming soon |
+
+---
+
+## MCP tools (Claude Desktop / Claude Code)
+
+After install, these tools are available in Claude:
+
+| Tool | Description |
+|---|---|
+| `compress` | Compress text + return stats |
+| `compress_and_use` | Compress and return only the compressed text |
+| `compression_stats` | Session token savings summary |
+| `set_config` | Set Groq API key for higher-quality compression |
+
+**Optional Groq upgrade** — get 14,400 free LLM-quality compressions/day:
+```
+Get free key at console.groq.com → tell Claude: "set my groq key to gsk_..."
+```
+
+---
 
 ## Architecture
 
 ```
-[Page textarea]
-      │ keydown/click
-      ▼
-[content.js] ──► [Adapter (claude.js)]
-      │
-      ▼
-[Interceptor]
-      │ chrome.runtime.sendMessage COMPRESS
-      ▼
-[background.js service worker]
-      │ fetch POST
-      ▼
-[Anthropic API — claude-haiku]
-      │ compressed text
-      ▼
-[Interceptor] ──► adapter.setText() ──► re-fire send
+Input text
+    │
+    ▼
+[Mask protected regions]  ← code blocks, URLs, quoted strings
+    │
+    ▼
+[100+ regex rules]         ← filler, hedges, verbose phrases, nominalizations
+    │                         Turkish rules if Turkish detected
+    ▼
+[Cleanup + normalize]      ← whitespace, capitalization, dedup
+    │
+    ▼
+[Unmask protected regions]
+    │
+    ▼
+Compressed output          ← zero API calls, <2ms, runs locally
 ```
 
-## Install
+---
 
-### Chrome (unpacked)
-1. Download and unzip `releases/tokenshrink-chrome-v0.1.0.zip`
-2. Open `chrome://extensions/` → enable Developer Mode
-3. Click "Load unpacked" → select the unzipped folder
-4. Open extension options → enter your Anthropic API key
+## Contributing
 
-### Firefox (temporary)
-1. Download and unzip `releases/tokenshrink-firefox-v0.1.0.zip`
-2. Open `about:debugging#/runtime/this-firefox`
-3. Click "Load Temporary Add-on" → select `manifest.json` from the unzipped folder
+Pull requests welcome. To add rules, edit `src/core/localCompressor.js`.
+Rules must be pre-compiled regex (no dynamic regex in hot path) and must not match inside code blocks or URLs.
 
-## Platform support
+---
 
-| Platform | Status | Notes |
-|---|---|---|
-| claude.ai | ✓ Active | Full interceptor |
-| chatgpt.com | 🔜 Soon | Adapter stubbed |
-| gemini.google.com | 🔜 Soon | Adapter stubbed |
-| Safari | - | Not planned v1 |
+## Support the project
 
-## Compression modes
+If TokenShrink saves you money, consider:
 
-| Mode | Reduction | Best for |
-|---|---|---|
-| Balanced | ~35% | General use |
-| Extreme | ~60% | Short imperative prompts |
-| Technical | ~25% prose | Code-heavy prompts |
+- ⭐ Star this repo
+- [Sponsor on GitHub](https://github.com/sponsors/lhr-present)
+- Share with your team
 
-## Adding a new platform adapter
+**TokenShrink Pro** (coming soon) — VS Code extension + team dashboard + unlimited Groq LLM compression.
+Join the waitlist: open an issue with title `[Pro waitlist]`.
 
-1. Create `src/adapters/yourplatform.js` — export an object with: `name`, `hostMatch`, `getTextarea`, `getSendButton`, `getText`, `setText`, `isReady`
-2. Import it in `src/adapters/index.js` and add to the `ADAPTERS` array
-3. Add the hostname to `host_permissions` and `content_scripts.matches` in `manifest.json`
+---
 
-## Roadmap
-
-- [ ] ChatGPT adapter (chatgpt.com)
-- [ ] Gemini adapter
-- [ ] Per-platform compression stats
-- [ ] Pre-send diff view (show what was removed)
-- [ ] Safari MV3 port
-- [ ] Domain-specific modes (academic, Turkish, code-only)
+MIT License
